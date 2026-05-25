@@ -70,7 +70,7 @@ Configuracion aplicada para este proyecto:
 - URL sitio: `demo.lbcchile.com`
 - Repositorio cPanel: `Muni`
 - Ruta repo en servidor: `/home/ligabasq/repositories/Muni`
-- `DEPLOYPATH` actual: `/home/ligabasq/public_html/demo.lbcchile.com`
+- `DEPLOYPATH` actual: `/home/ligabasq/public_html/demo`
 
 ### 2) Configurar repositorio en cPanel
 

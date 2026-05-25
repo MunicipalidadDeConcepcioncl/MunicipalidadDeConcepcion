@@ -14,6 +14,55 @@ CPANEL_DB_NAME="${CPANEL_DB_NAME:-}"
 CPANEL_DB_USER="${CPANEL_DB_USER:-}"
 CPANEL_DB_PASSWORD="${CPANEL_DB_PASSWORD:-}"
 
+escape_php_single() {
+  printf '%s' "$1" | sed "s/['\\\\]/\\\\&/g"
+}
+
+configure_wp_config() {
+  local config_path tmp_file db_name_esc db_user_esc db_password_esc db_host_esc
+  config_path="${DEPLOYPATH}/wp-config.php"
+
+  if [ ! -f "${config_path}" ]; then
+    echo "INFO: wp-config.php not found in deploy path, skipping config update."
+    return 0
+  fi
+
+  if [ -z "${CPANEL_DB_NAME}" ] || [ -z "${CPANEL_DB_USER}" ] || [ -z "${CPANEL_DB_PASSWORD}" ]; then
+    echo "INFO: Missing CPANEL_DB_* values, skipping wp-config.php DB fallback update."
+    return 0
+  fi
+
+  db_name_esc="$(escape_php_single "${CPANEL_DB_NAME}")"
+  db_user_esc="$(escape_php_single "${CPANEL_DB_USER}")"
+  db_password_esc="$(escape_php_single "${CPANEL_DB_PASSWORD}")"
+  db_host_esc="$(escape_php_single "${CPANEL_DB_HOST}")"
+
+  tmp_file="$(mktemp "/tmp/wp-config.XXXXXX")"
+
+  while IFS= read -r line; do
+    case "${line}" in
+      *"define( 'DB_NAME', getenv_docker('WORDPRESS_DB_NAME'"*)
+        echo "define( 'DB_NAME', getenv_docker('WORDPRESS_DB_NAME', '${db_name_esc}') );" >> "${tmp_file}"
+        ;;
+      *"define( 'DB_USER', getenv_docker('WORDPRESS_DB_USER'"*)
+        echo "define( 'DB_USER', getenv_docker('WORDPRESS_DB_USER', '${db_user_esc}') );" >> "${tmp_file}"
+        ;;
+      *"define( 'DB_PASSWORD', getenv_docker('WORDPRESS_DB_PASSWORD'"*)
+        echo "define( 'DB_PASSWORD', getenv_docker('WORDPRESS_DB_PASSWORD', '${db_password_esc}') );" >> "${tmp_file}"
+        ;;
+      *"define( 'DB_HOST', getenv_docker('WORDPRESS_DB_HOST'"*)
+        echo "define( 'DB_HOST', getenv_docker('WORDPRESS_DB_HOST', '${db_host_esc}') );" >> "${tmp_file}"
+        ;;
+      *)
+        echo "${line}" >> "${tmp_file}"
+        ;;
+    esac
+  done < "${config_path}"
+
+  /bin/mv "${tmp_file}" "${config_path}"
+  echo "INFO: wp-config.php updated with cPanel DB fallback values."
+}
+
 if [ -z "${DEPLOYPATH}" ]; then
   echo "ERROR: DEPLOYPATH is empty. Set it in .cpanel.yml"
   exit 1
@@ -122,6 +171,7 @@ deploy_full_wordpress() {
     /bin/cp -R "${source_wp}" "${DEPLOYPATH}/"
   fi
 
+  configure_wp_config
   import_database "${db_sql}"
 }
 

@@ -2,4 +2,6 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/ligabasq/public_html/demo
+    - export FULL_DEPLOY_PACKAGE=deploy/full/latest.tar.gz
+    - export IMPORT_DB_ON_DEPLOY=0
     - /bin/bash scripts/cpanel/deploy.sh

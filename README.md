@@ -58,36 +58,73 @@ En WordPress:
 
 ## Deploy a cPanel via GitHub
 
-Este repo ya incluye archivos base para deploy desde cPanel:
+Este repo ahora soporta dos modos con `scripts/cpanel/deploy.sh`:
 
-- `.cpanel.yml`
-- `scripts/cpanel/deploy.sh`
+- `custom`: despliega solo `theme + mu-plugins` (modo legacy).
+- `full`: despliega WordPress completo (archivos + base de datos).
 
-### 1) Ajustar ruta de despliegue
+### 1) Configuracion cPanel actual
 
-Configuracion aplicada para este proyecto:
+Configuracion aplicada:
 
 - URL sitio: `demo.lbcchile.com`
 - Repositorio cPanel: `Muni`
 - Ruta repo en servidor: `/home/ligabasq/repositories/Muni`
 - `DEPLOYPATH` actual: `/home/ligabasq/public_html/demo`
 
-### 2) Configurar repositorio en cPanel
+Archivo `.cpanel.yml`:
 
-En `cPanel > Git Version Control`:
+- `DEPLOYPATH=/home/ligabasq/public_html/demo`
+- `FULL_DEPLOY_PACKAGE=deploy/full/latest.tar.gz`
+- `IMPORT_DB_ON_DEPLOY=0`
 
-1. Crea o vincula el repositorio desde GitHub.
-2. Usa el nombre de repositorio `Muni`.
-3. Verifica que el path del repositorio sea `/home/ligabasq/repositories/Muni`.
-4. Selecciona la rama que usarás para producción (recomendado `main` o `production`).
-5. Abre `Manage` del repo y ejecuta `Update from Remote`.
-6. Ejecuta `Deploy HEAD Commit`.
+Con `FULL_DEPLOY_PACKAGE` definido, cPanel ejecuta modo `full`.
 
-### 3) Qué despliega este proyecto
+### 2) Preparar paquete full desde Docker local
 
-El script despliega solo contenido custom de WordPress:
+Genera snapshot del WordPress local en ejecución (`/var/www/html` + SQL):
 
-- `wp-content/themes/sitio-cero/`
-- `wp-content/mu-plugins/`
+```bash
+bash scripts/cpanel/package-full-deploy.sh
+```
 
-No toca archivos core de WordPress.
+Resultado:
+
+- `deploy/full/wordpress-full-YYYYmmdd-HHMMSS.tar.gz`
+- `deploy/full/latest.tar.gz`
+
+El deploy full en cPanel usa `deploy/full/latest.tar.gz`.
+
+### 3) Publicar para deploy full
+
+1. Genera el paquete full.
+2. Commit y push del repo (incluyendo `deploy/full/latest.tar.gz`).
+3. En `cPanel > Git Version Control > Manage`:
+   - `Update from Remote`
+   - `Deploy HEAD Commit`
+
+### 4) Importar DB en cPanel (opcional)
+
+Por defecto la importacion está desactivada (`IMPORT_DB_ON_DEPLOY=0`).
+
+Si quieres importar SQL durante deploy:
+
+1. Cambia en `.cpanel.yml`: `IMPORT_DB_ON_DEPLOY=1`.
+2. Define variables en el entorno del deploy (o antes de ejecutar script):
+   - `CPANEL_DB_HOST` (default `localhost`)
+   - `CPANEL_DB_PORT` (default `3306`)
+   - `CPANEL_DB_NAME`
+   - `CPANEL_DB_USER`
+   - `CPANEL_DB_PASSWORD`
+
+Si faltan credenciales, el deploy falla de forma segura.
+
+### 5) Volver a modo custom (sin full package)
+
+En `.cpanel.yml`, elimina `FULL_DEPLOY_PACKAGE` o dejalo vacio:
+
+```yaml
+- export FULL_DEPLOY_PACKAGE=
+```
+
+Con eso el deploy vuelve al modo legacy (solo `theme + mu-plugins`).

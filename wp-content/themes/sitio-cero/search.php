@@ -62,7 +62,7 @@ $search_normalized_clean = $sanitized_search_term;
 
 $search_post_types = array_values(
     array_filter(
-        array('post', 'page', 'noticia', 'aviso', 'direccion_municipal', 'evento_municipal', 'municipalidad'),
+        array('post', 'page', 'noticia', 'aviso', 'direccion_municipal', 'evento_municipal', 'municipalidad', 'plan_regulador'),
         static function ($post_type) {
             return post_type_exists($post_type);
         }
@@ -314,7 +314,7 @@ if (!empty($related_taxonomies)) {
 
 <main id="content" class="site-main section container search-results-page">
     <header class="section__header search-results-page__header">
-        <h1><?php esc_html_e('Resultados de busqueda', 'sitio-cero'); ?></h1>
+        <h1><?php esc_html_e('Resultados de búsqueda', 'sitio-cero'); ?></h1>
         <?php if ('' !== $search_term) : ?>
             <p class="search-results-page__query">
                 <?php
@@ -334,7 +334,7 @@ if (!empty($related_taxonomies)) {
 
             <?php if (!empty($related_news_categories)) : ?>
                 <div class="search-results-page__taxonomy">
-                    <h3><?php esc_html_e('Categorias relacionadas', 'sitio-cero'); ?></h3>
+                    <h3><?php esc_html_e('Categorías relacionadas', 'sitio-cero'); ?></h3>
                     <ul class="search-results-page__taxonomy-list">
                         <?php foreach ($related_news_categories as $related_category) : ?>
                             <li class="search-results-page__taxonomy-item">
@@ -403,14 +403,14 @@ if (!empty($related_taxonomies)) {
                 <?php wp_reset_postdata(); ?>
             <?php else : ?>
                 <div class="search-results-page__empty">
-                    <p><?php esc_html_e('No encontramos resultados internos para esta busqueda.', 'sitio-cero'); ?></p>
+                    <p><?php esc_html_e('No encontramos resultados internos para esta búsqueda.', 'sitio-cero'); ?></p>
                 </div>
             <?php endif; ?>
         </section>
 
         <aside class="search-results-page__google">
             <h2><?php esc_html_e('Resultados en Google', 'sitio-cero'); ?></h2>
-            <p><?php esc_html_e('Puedes complementar la busqueda con Google para encontrar mas referencias relacionadas.', 'sitio-cero'); ?></p>
+            <p><?php esc_html_e('Puedes complementar la búsqueda con Google para encontrar más referencias relacionadas.', 'sitio-cero'); ?></p>
 
             <a class="button search-results-page__google-main-link" href="<?php echo esc_url($google_web_url); ?>" target="_blank" rel="noopener noreferrer">
                 <?php esc_html_e('Abrir resultados web en Google', 'sitio-cero'); ?>
@@ -418,7 +418,7 @@ if (!empty($related_taxonomies)) {
 
             <ul class="search-results-page__google-links">
                 <li><a href="<?php echo esc_url($google_news_url); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Ver noticias en Google', 'sitio-cero'); ?></a></li>
-                <li><a href="<?php echo esc_url($google_images_url); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Ver imagenes en Google', 'sitio-cero'); ?></a></li>
+                <li><a href="<?php echo esc_url($google_images_url); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Ver imágenes en Google', 'sitio-cero'); ?></a></li>
                 <li><a href="<?php echo esc_url($google_maps_url); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Ver ubicaciones en Google Maps', 'sitio-cero'); ?></a></li>
             </ul>
         </aside>

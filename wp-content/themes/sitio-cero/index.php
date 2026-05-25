@@ -61,7 +61,7 @@ get_header();
                         <?php endif; ?>
                         <h2 class="news-card__title"><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h2>
                         <p><?php echo esc_html(wp_trim_words(get_the_excerpt(), 20)); ?></p>
-                        <a class="news-card__link post-card__link" href="<?php the_permalink(); ?>"><?php esc_html_e('Leer mas', 'sitio-cero'); ?></a>
+                        <a class="news-card__link post-card__link" href="<?php the_permalink(); ?>"><?php esc_html_e('Leer más', 'sitio-cero'); ?></a>
                     </div>
                 </article>
             <?php endwhile; ?>

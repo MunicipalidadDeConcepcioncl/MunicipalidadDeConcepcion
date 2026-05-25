@@ -40,7 +40,7 @@
                 <a class="topbar__cta topbar__cta--sai" href="https://www.portaltransparencia.cl/PortalPdT/ingreso-sai-v2" target="_blank" rel="noopener noreferrer">
                     <span class="material-symbols-rounded topbar__cta-icon" aria-hidden="true">info</span>
                     <span class="topbar__cta-text">
-                        <span><?php esc_html_e('Solicitud de informacion', 'sitio-cero'); ?></span>
+                        <span><?php esc_html_e('Solicitud de información', 'sitio-cero'); ?></span>
                         <span class="topbar__cta-sub"><?php esc_html_e('Ley de Transparencia', 'sitio-cero'); ?></span>
                     </span>
                 </a>
@@ -51,7 +51,7 @@
                         <span class="topbar__cta-sub"><?php esc_html_e('Ley de Transparencia', 'sitio-cero'); ?></span>
                     </span>
                 </a>
-                <a class="topbar__link" href="<?php echo esc_url(home_url('/#canales')); ?>">Canales de atencion</a>
+                <a class="topbar__link" href="<?php echo esc_url(home_url('/#canales')); ?>">Canales de atención</a>
             </div>
         <?php else : ?>
             <?php foreach ($topbar_left_items as $topbar_item) : ?>
@@ -116,7 +116,7 @@ if (function_exists('sitio_cero_render_breadcrumbs')) {
             <img
                 class="brand-logo-image"
                 src="<?php echo esc_url($brand_logo['url']); ?>"
-                alt="<?php esc_attr_e('Municipalidad de Concepcion', 'sitio-cero'); ?>"
+                alt="<?php esc_attr_e('Municipalidad de Concepción', 'sitio-cero'); ?>"
                 width="<?php echo esc_attr((string) $brand_logo['width']); ?>"
                 height="<?php echo esc_attr((string) $brand_logo['height']); ?>"
                 loading="eager"
@@ -134,10 +134,10 @@ if (function_exists('sitio_cero_render_breadcrumbs')) {
             aria-expanded="false"
             aria-controls="menu-principal"
         >
-            Menu
+            Menú
         </button>
 
-        <nav id="menu-principal" class="site-nav" aria-label="<?php esc_attr_e('Menu principal', 'sitio-cero'); ?>">
+        <nav id="menu-principal" class="site-nav" aria-label="<?php esc_attr_e('Menú principal', 'sitio-cero'); ?>">
             <?php
             wp_nav_menu(
                 array(
@@ -155,7 +155,7 @@ if (function_exists('sitio_cero_render_breadcrumbs')) {
             class="site-header-edge-tools"
             data-header-search
             data-search-endpoint="<?php echo esc_url(rest_url('wp/v2/search')); ?>"
-            data-search-types="post,page,noticia,aviso,direccion_municipal,evento_municipal,municipalidad"
+            data-search-types="post,page,noticia,aviso,direccion_municipal,evento_municipal,municipalidad,plan_regulador"
         >
             <div class="site-header-search-shell" data-header-search-shell>
                 <button
@@ -189,7 +189,7 @@ if (function_exists('sitio_cero_render_breadcrumbs')) {
                     </form>
 
                     <div class="site-header-search-suggest">
-                        <p class="site-header-search-suggest__title"><?php esc_html_e('Busquedas recomendadas', 'sitio-cero'); ?></p>
+                        <p class="site-header-search-suggest__title"><?php esc_html_e('Búsquedas recomendadas', 'sitio-cero'); ?></p>
                         <ul class="site-header-search-suggest__list" data-header-search-suggestions></ul>
                     </div>
                 </div>

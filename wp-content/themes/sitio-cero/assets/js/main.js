@@ -1092,6 +1092,7 @@
             { label: 'Noticias municipales', url: toAbsoluteUrl('/?categoria_noticia=noticias') },
             { label: 'Categoria noticias', url: toAbsoluteUrl('/?categoria_noticia=noticias') },
             { label: 'Direcciones municipales', url: toAbsoluteUrl('/?post_type=direccion_municipal') },
+            { label: 'Plan Regulador', url: toAbsoluteUrl('/?post_type=plan_regulador') },
             { label: 'Eventos en Concepcion', url: toAbsoluteUrl('/?post_type=evento_municipal') },
             { label: 'Avisos municipales', url: toAbsoluteUrl('/?post_type=aviso') },
             { label: 'Oficina virtual', url: toAbsoluteUrl('/#temas-ciudadanos') },

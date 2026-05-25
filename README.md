@@ -55,3 +55,38 @@ En WordPress:
 
 1. `Apariencia > Temas`
 2. Activar `Sitio Cero`
+
+## Deploy a cPanel via GitHub
+
+Este repo ya incluye archivos base para deploy desde cPanel:
+
+- `.cpanel.yml`
+- `scripts/cpanel/deploy.sh`
+
+### 1) Ajustar ruta de despliegue
+
+Edita `.cpanel.yml` y cambia:
+
+- `DEPLOYPATH=/home/CPANEL_USER/public_html`
+
+por la ruta real de tu cuenta en cPanel, por ejemplo:
+
+- `DEPLOYPATH=/home/usuario/public_html`
+
+### 2) Configurar repositorio en cPanel
+
+En `cPanel > Git Version Control`:
+
+1. Crea o vincula el repositorio desde GitHub.
+2. Selecciona la rama que usarás para producción (recomendado `main` o `production`).
+3. Abre `Manage` del repo y ejecuta `Update from Remote`.
+4. Ejecuta `Deploy HEAD Commit`.
+
+### 3) Qué despliega este proyecto
+
+El script despliega solo contenido custom de WordPress:
+
+- `wp-content/themes/sitio-cero/`
+- `wp-content/mu-plugins/`
+
+No toca archivos core de WordPress.

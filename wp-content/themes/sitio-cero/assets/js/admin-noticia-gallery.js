@@ -116,9 +116,9 @@
 
             if (!frame) {
                 frame = wp.media({
-                    title: config.frameTitle || 'Selecciona imagenes para la galeria',
+                    title: config.frameTitle || 'Selecciona imágenes para la galeria',
                     button: {
-                        text: config.frameButton || 'Usar imagenes'
+                        text: config.frameButton || 'Usar imágenes'
                     },
                     library: {
                         type: 'image'

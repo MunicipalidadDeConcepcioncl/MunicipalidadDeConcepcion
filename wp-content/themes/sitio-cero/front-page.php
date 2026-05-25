@@ -38,7 +38,7 @@ get_header();
                     <?php if ($hero_slider_query->have_posts()) : ?>
                         <div id="carouselSlider" class="hero-slider carousel slide" data-hero-slider data-autoplay="true">
                             <?php if ($hero_total_slides > 1) : ?>
-                                <div class="carousel-indicators hero-slider__dots" role="tablist" aria-label="Navegacion del hero">
+                                <div class="carousel-indicators hero-slider__dots" role="tablist" aria-label="Navegación del hero">
                                     <?php for ($i = 0; $i < $hero_total_slides; $i++) : ?>
                                         <button
                                             class="hero-slider__dot<?php echo 0 === $i ? ' is-active' : ''; ?>"
@@ -108,7 +108,7 @@ get_header();
                                 <article class="hero-slide is-active active" data-slide aria-hidden="false">
                                     <div class="hero-slide__media">
                                         <span class="hero-slide__image hero-slide__image--placeholder">
-                                            <?php esc_html_e('Crea laminas en Slide Banner para mostrar el carrusel.', 'sitio-cero'); ?>
+                                            <?php esc_html_e('Crea láminas en Slide Banner para mostrar el carrusel.', 'sitio-cero'); ?>
                                         </span>
                                     </div>
                                 </article>
@@ -217,7 +217,7 @@ get_header();
                     <?php endwhile; ?>
                     </div>
                 </div>
-                <div class="news-carousel__controls" aria-label="<?php esc_attr_e('Navegacion de noticias', 'sitio-cero'); ?>">
+                <div class="news-carousel__controls" aria-label="<?php esc_attr_e('Navegación de noticias', 'sitio-cero'); ?>">
                     <button class="news-carousel__arrow news-carousel__arrow--prev" type="button" data-news-prev aria-label="<?php esc_attr_e('Noticias anteriores', 'sitio-cero'); ?>">
                         <span aria-hidden="true">&#x276E;</span>
                     </button>
@@ -354,7 +354,7 @@ get_header();
                 </div>
             <?php else : ?>
                 <div class="empty-state">
-                    <p><?php esc_html_e('Aun no hay avisos publicados. Crea avisos desde el menu Avisos del administrador.', 'sitio-cero'); ?></p>
+                    <p><?php esc_html_e('Aún no hay avisos publicados. Crea avisos desde el menú Avisos del administrador.', 'sitio-cero'); ?></p>
                 </div>
             <?php endif; ?>
             <?php wp_reset_postdata(); ?>
@@ -526,7 +526,7 @@ get_header();
             <?php if ($has_active_agenda_events) : ?>
                 <article class="agenda-card">
                     <div class="agenda-card__head">
-                        <h2><?php esc_html_e('Proximas actividades', 'sitio-cero'); ?></h2>
+                        <h2><?php esc_html_e('Próximas actividades', 'sitio-cero'); ?></h2>
                     </div>
                     <ul class="agenda-list">
                         <?php foreach ($agenda_events as $agenda_event) : ?>
@@ -600,14 +600,101 @@ get_header();
             <?php endif; ?>
 
             <article class="agenda-card agenda-card--channels" id="canales">
-                <h2>Canales para resolver tus consultas</h2>
+                <?php
+                $agenda_channels_block = function_exists('sitio_cero_get_agenda_channels_block_data')
+                    ? sitio_cero_get_agenda_channels_block_data()
+                    : array();
+                $agenda_channels_title = isset($agenda_channels_block['title']) && is_string($agenda_channels_block['title'])
+                    ? trim($agenda_channels_block['title'])
+                    : '';
+                $agenda_channels_description = isset($agenda_channels_block['description']) && is_string($agenda_channels_block['description'])
+                    ? trim($agenda_channels_block['description'])
+                    : '';
+                $agenda_channels_items = isset($agenda_channels_block['channels']) && is_array($agenda_channels_block['channels'])
+                    ? $agenda_channels_block['channels']
+                    : array();
+                $agenda_channels_cta = isset($agenda_channels_block['cta']) && is_array($agenda_channels_block['cta'])
+                    ? $agenda_channels_block['cta']
+                    : array();
+                $agenda_channels_cta_label = isset($agenda_channels_cta['label']) && is_string($agenda_channels_cta['label'])
+                    ? trim($agenda_channels_cta['label'])
+                    : '';
+                $agenda_channels_cta_url = isset($agenda_channels_cta['url']) && is_string($agenda_channels_cta['url'])
+                    ? trim($agenda_channels_cta['url'])
+                    : '';
+                $agenda_channels_cta_target = isset($agenda_channels_cta['target']) && '_blank' === $agenda_channels_cta['target']
+                    ? '_blank'
+                    : '_self';
+                ?>
+                <?php if ('' !== $agenda_channels_title) : ?>
+                    <h2><?php echo esc_html($agenda_channels_title); ?></h2>
+                <?php endif; ?>
+                <?php if ('' !== $agenda_channels_description) : ?>
+                    <p><?php echo esc_html($agenda_channels_description); ?></p>
+                <?php endif; ?>
                 <ul class="channel-list">
-                    <li><strong>Presencial:</strong> Lunes a viernes, 08:30 a 14:00 hrs.</li>
-                    <li><strong>Telefonico:</strong> +56 2 3386 8000.</li>
-                    <li><strong>Correo:</strong> contacto@municipio.cl.</li>
-                    <li><strong>Oficina virtual:</strong> Trámites, solicitudes y seguimiento.</li>
+                    <?php foreach ($agenda_channels_items as $agenda_channel_item) : ?>
+                        <?php
+                        if (!is_array($agenda_channel_item)) {
+                            continue;
+                        }
+                        $item_icon = isset($agenda_channel_item['icon']) ? trim((string) $agenda_channel_item['icon']) : '';
+                        $item_title = isset($agenda_channel_item['title']) ? trim((string) $agenda_channel_item['title']) : '';
+                        $item_description = isset($agenda_channel_item['description']) ? trim((string) $agenda_channel_item['description']) : '';
+                        $item_url = isset($agenda_channel_item['url']) ? trim((string) $agenda_channel_item['url']) : '';
+                        $item_target = isset($agenda_channel_item['target']) && '_blank' === $agenda_channel_item['target'] ? '_blank' : '_self';
+                        $item_target_attr = '_blank' === $item_target ? ' target="_blank" rel="noopener noreferrer"' : '';
+                        if ('' === $item_title && '' === $item_description) {
+                            continue;
+                        }
+                        ?>
+                        <li>
+                            <?php if ('' !== $item_url) : ?>
+                                <a class="agenda-card__channel" href="<?php echo esc_url($item_url); ?>"<?php echo $item_target_attr; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
+                                    <?php if ('' !== $item_icon) : ?>
+                                        <span class="agenda-card__channel-icon material-symbols-rounded" aria-hidden="true"><?php echo esc_html($item_icon); ?></span>
+                                    <?php endif; ?>
+                                    <span class="agenda-card__channel-content">
+                                        <?php if ('' !== $item_title) : ?>
+                                            <strong><?php echo esc_html($item_title); ?></strong>
+                                        <?php endif; ?>
+                                        <?php if ('' !== $item_description) : ?>
+                                            <small><?php echo esc_html($item_description); ?></small>
+                                        <?php endif; ?>
+                                    </span>
+                                </a>
+                            <?php else : ?>
+                                <?php if ('' !== $item_icon) : ?>
+                                    <span class="agenda-card__channel agenda-card__channel--static">
+                                        <span class="agenda-card__channel-icon material-symbols-rounded" aria-hidden="true"><?php echo esc_html($item_icon); ?></span>
+                                        <span class="agenda-card__channel-content">
+                                            <?php if ('' !== $item_title) : ?>
+                                                <strong><?php echo esc_html($item_title); ?></strong>
+                                            <?php endif; ?>
+                                            <?php if ('' !== $item_description) : ?>
+                                                <small><?php echo esc_html($item_description); ?></small>
+                                            <?php endif; ?>
+                                        </span>
+                                    </span>
+                                <?php else : ?>
+                                    <span class="agenda-card__channel agenda-card__channel--static">
+                                        <span class="agenda-card__channel-content">
+                                            <?php if ('' !== $item_title) : ?>
+                                                <strong><?php echo esc_html($item_title); ?></strong>
+                                            <?php endif; ?>
+                                            <?php if ('' !== $item_description) : ?>
+                                                <small><?php echo esc_html($item_description); ?></small>
+                                            <?php endif; ?>
+                                        </span>
+                                    </span>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </li>
+                    <?php endforeach; ?>
                 </ul>
-                <a class="button button--light" href="#">Ingresar a oficina virtual</a>
+                <?php if ('' !== $agenda_channels_cta_label && '' !== $agenda_channels_cta_url) : ?>
+                    <a class="button button--light" href="<?php echo esc_url($agenda_channels_cta_url); ?>"<?php echo '_blank' === $agenda_channels_cta_target ? ' target="_blank" rel="noopener noreferrer"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php echo esc_html($agenda_channels_cta_label); ?></a>
+                <?php endif; ?>
             </article>
         </div>
     </section>

@@ -4,40 +4,76 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Orden alfabetico de menús CPT en admin (solo edit.php?post_type=...).
+// Orden alfabético de menús CPT en admin (solo edit.php?post_type=...).
+function sitio_cero_is_cpt_admin_menu_item($item)
+{
+    if (!is_array($item) || empty($item[2])) {
+        return false;
+    }
+
+    return (strpos((string) $item[2], 'edit.php?post_type=') === 0);
+}
+
+function sitio_cero_get_cpt_admin_menu_sort_label($item)
+{
+    $title = isset($item[0]) ? wp_strip_all_tags((string) $item[0]) : '';
+    $slug = isset($item[2]) ? (string) $item[2] : '';
+    $post_type = '';
+
+    if ('' !== $slug) {
+        $query = wp_parse_url($slug, PHP_URL_QUERY);
+        if (is_string($query)) {
+            parse_str($query, $query_args);
+            if (!empty($query_args['post_type'])) {
+                $post_type = (string) $query_args['post_type'];
+            }
+        }
+    }
+
+    if ('' !== $post_type) {
+        $post_type_object = get_post_type_object($post_type);
+        if ($post_type_object instanceof WP_Post_Type && !empty($post_type_object->labels->menu_name)) {
+            $title = (string) $post_type_object->labels->menu_name;
+        }
+    }
+
+    return strtolower(remove_accents(trim($title)));
+}
+
 add_action('admin_menu', function () {
+    sitio_cero_sort_cpt_admin_menus();
+}, 99999);
+
+function sitio_cero_sort_cpt_admin_menus()
+{
     global $menu, $submenu;
 
     if (empty($menu) || !is_array($menu)) {
         return;
     }
 
-    $is_cpt_menu = function ($item) {
-        if (!is_array($item) || empty($item[2])) {
-            return false;
-        }
-        return (strpos($item[2], 'edit.php?post_type=') === 0);
-    };
-
-    $get_title = function ($item) {
-        return isset($item[0]) ? wp_strip_all_tags($item[0]) : '';
+    $compare = static function ($a, $b) {
+        return strcmp(
+            sitio_cero_get_cpt_admin_menu_sort_label($a),
+            sitio_cero_get_cpt_admin_menu_sort_label($b)
+        );
     };
 
     // 1) Ordenar items de menú de CPT.
-    $cpt_items = [];
-    $cpt_indexes = [];
+    $cpt_items = array();
+    $cpt_indexes = array();
 
     foreach ($menu as $idx => $item) {
-        if ($is_cpt_menu($item)) {
-            $cpt_items[] = $item;
-            $cpt_indexes[] = $idx;
+        if (!sitio_cero_is_cpt_admin_menu_item($item)) {
+            continue;
         }
+
+        $cpt_items[] = $item;
+        $cpt_indexes[] = $idx;
     }
 
     if (count($cpt_items) > 1) {
-        usort($cpt_items, function ($a, $b) use ($get_title) {
-            return strcasecmp($get_title($a), $get_title($b));
-        });
+        usort($cpt_items, $compare);
 
         // Reinsertar en las mismas posiciones que ocupaban los CPTs.
         foreach ($cpt_indexes as $i => $idx) {
@@ -46,25 +82,57 @@ add_action('admin_menu', function () {
     }
 
     // 2) Ordenar submenús de cada CPT.
-    if (!empty($submenu) && is_array($submenu)) {
-        foreach ($submenu as $parent_slug => $items) {
-            if (strpos($parent_slug, 'edit.php?post_type=') !== 0) {
-                continue;
-            }
-
-            if (!is_array($items) || count($items) <= 1) {
-                continue;
-            }
-
-            $sorted = $items;
-            usort($sorted, function ($a, $b) use ($get_title) {
-                return strcasecmp($get_title($a), $get_title($b));
-            });
-
-            $submenu[$parent_slug] = $sorted;
-        }
+    if (empty($submenu) || !is_array($submenu)) {
+        return;
     }
-}, 999);
+
+    foreach ($submenu as $parent_slug => $items) {
+        if (strpos((string) $parent_slug, 'edit.php?post_type=') !== 0) {
+            continue;
+        }
+
+        if (!is_array($items) || count($items) <= 1) {
+            continue;
+        }
+
+        $sorted = $items;
+        usort($sorted, $compare);
+        $submenu[$parent_slug] = $sorted;
+    }
+}
+
+add_action('admin_head', 'sitio_cero_sort_cpt_admin_menus', 99999);
+
+// Orden alfabético por título en listados admin de todos los CPT.
+function sitio_cero_sort_cpt_admin_listings($query)
+{
+    if (!is_admin() || !($query instanceof WP_Query) || !$query->is_main_query()) {
+        return;
+    }
+
+    global $pagenow;
+    if ('edit.php' !== $pagenow) {
+        return;
+    }
+
+    $post_type = (string) $query->get('post_type');
+    if ('' === $post_type || 'any' === $post_type || !post_type_exists($post_type)) {
+        return;
+    }
+
+    $post_type_object = get_post_type_object($post_type);
+    if (!($post_type_object instanceof WP_Post_Type) || !empty($post_type_object->_builtin)) {
+        return;
+    }
+
+    if ('' !== (string) $query->get('orderby')) {
+        return;
+    }
+
+    $query->set('orderby', 'title');
+    $query->set('order', 'ASC');
+}
+add_action('pre_get_posts', 'sitio_cero_sort_cpt_admin_listings', 100);
 
 function sitio_cero_setup()
 {
@@ -83,9 +151,9 @@ function sitio_cero_setup()
 
     register_nav_menus(
         array(
-            'primary'          => __('Menu principal', 'sitio-cero'),
-            'hero_info'        => __('Menu Quiero informacion', 'sitio-cero'),
-            'temas_ciudadanos' => __('Menu Temas ciudadanos', 'sitio-cero'),
+            'primary'          => __('Menú principal', 'sitio-cero'),
+            'hero_info'        => __('Menú Quiero información', 'sitio-cero'),
+            'temas_ciudadanos' => __('Menú Temas ciudadanos', 'sitio-cero'),
             'tramites_hero'    => __('Menu Trámites - Hero', 'sitio-cero'),
             'tramites_grid'    => __('Menu Trámites - Grilla', 'sitio-cero'),
         )
@@ -181,7 +249,7 @@ function sitio_cero_get_breadcrumb_items()
 
     if (is_search()) {
         $items[] = array(
-            'label' => sprintf(__('Busqueda: %s', 'sitio-cero'), get_search_query()),
+            'label' => sprintf(__('Búsqueda: %s', 'sitio-cero'), get_search_query()),
             'url'   => '',
         );
         return $items;
@@ -189,7 +257,7 @@ function sitio_cero_get_breadcrumb_items()
 
     if (is_404()) {
         $items[] = array(
-            'label' => __('Pagina no encontrada', 'sitio-cero'),
+            'label' => __('Página no encontrada', 'sitio-cero'),
             'url'   => '',
         );
         return $items;
@@ -600,7 +668,7 @@ function sitio_cero_seed_default_topbar_items()
             'type'     => 'info',
         ),
         array(
-            'title'        => __('Solicitud de informacion', 'sitio-cero'),
+            'title'        => __('Solicitud de información', 'sitio-cero'),
             'subtitle'     => __('Ley de Transparencia', 'sitio-cero'),
             'type'         => 'cta',
             'url'          => 'https://www.portaltransparencia.cl/PortalPdT/ingreso-sai-v2',
@@ -616,7 +684,7 @@ function sitio_cero_seed_default_topbar_items()
             'target_blank' => '1',
         ),
         array(
-            'title'    => __('Canales de atencion', 'sitio-cero'),
+            'title'    => __('Canales de atención', 'sitio-cero'),
             'type'     => 'link',
             'url'      => home_url('/#canales'),
         ),
@@ -647,6 +715,62 @@ function sitio_cero_seed_default_topbar_items()
     update_option($seed_option, $seed_version);
 }
 add_action('init', 'sitio_cero_seed_default_topbar_items', 46);
+
+function sitio_cero_normalize_topbar_items_spelling()
+{
+    if (!post_type_exists('topbar_item')) {
+        return;
+    }
+
+    $version = '1';
+    $option_key = 'sitio_cero_topbar_spelling_normalized_version';
+    if ((string) get_option($option_key, '') === $version) {
+        return;
+    }
+
+    $title_map = array(
+        'Solicitud de informacion' => 'Solicitud de información',
+        'Canales de atencion'      => 'Canales de atención',
+    );
+    $subtitle_map = array(
+        'Ley de Transparencia' => 'Ley de Transparencia',
+    );
+
+    $posts = get_posts(
+        array(
+            'post_type'      => 'topbar_item',
+            'post_status'    => array('publish', 'draft', 'pending', 'future', 'private'),
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+        )
+    );
+
+    foreach ($posts as $post_id) {
+        $post_id = (int) $post_id;
+        if ($post_id <= 0) {
+            continue;
+        }
+
+        $current_title = get_the_title($post_id);
+        if (isset($title_map[$current_title])) {
+            wp_update_post(
+                array(
+                    'ID'         => $post_id,
+                    'post_title' => $title_map[$current_title],
+                )
+            );
+        }
+
+        $current_subtitle = get_post_meta($post_id, 'sitio_cero_topbar_item_subtitle', true);
+        if (is_string($current_subtitle) && isset($subtitle_map[$current_subtitle])) {
+            update_post_meta($post_id, 'sitio_cero_topbar_item_subtitle', $subtitle_map[$current_subtitle]);
+        }
+    }
+
+    update_option($option_key, $version);
+}
+add_action('init', 'sitio_cero_normalize_topbar_items_spelling', 47);
 
 function sitio_cero_enqueue_topbar_sort_admin_assets($hook_suffix)
 {
@@ -1095,9 +1219,9 @@ function sitio_cero_enqueue_noticia_admin_assets($hook_suffix)
         'sitio-cero-admin-noticia-gallery',
         'sitioCeroNoticiaGallery',
         array(
-            'frameTitle'  => __('Selecciona imagenes para la galeria', 'sitio-cero'),
-            'frameButton' => __('Usar imagenes', 'sitio-cero'),
-            'emptyText'   => __('No hay imagenes seleccionadas. Haz clic en "Seleccionar imagenes".', 'sitio-cero'),
+            'frameTitle'  => __('Selecciona imágenes para la galeria', 'sitio-cero'),
+            'frameButton' => __('Usar imágenes', 'sitio-cero'),
+            'emptyText'   => __('No hay imágenes seleccionadas. Haz clic en "Seleccionar imágenes".', 'sitio-cero'),
             'removeText'  => __('Quitar', 'sitio-cero'),
         )
     );
@@ -1634,11 +1758,11 @@ function sitio_cero_get_temas_ciudadanos_default_items()
             'url'   => '#',
         ),
         array(
-            'label' => __('Seguridad publica', 'sitio-cero'),
+            'label' => __('Seguridad pública', 'sitio-cero'),
             'url'   => '#',
         ),
         array(
-            'label' => __('Transito y movilidad', 'sitio-cero'),
+            'label' => __('Tránsito y movilidad', 'sitio-cero'),
             'url'   => '#',
         ),
         array(
@@ -1650,7 +1774,7 @@ function sitio_cero_get_temas_ciudadanos_default_items()
             'url'   => '#',
         ),
         array(
-            'label' => __('Educacion municipal', 'sitio-cero'),
+            'label' => __('Educación municipal', 'sitio-cero'),
             'url'   => '#',
         ),
     );
@@ -1790,19 +1914,19 @@ function sitio_cero_get_default_footer_columns()
     return array(
         array(
             'title'   => __('La municipalidad', 'sitio-cero'),
-            'content' => '<ul><li><a href="#">Alcaldia</a></li><li><a href="#">Concejo municipal</a></li><li><a href="#">Direcciones</a></li><li><a href="#">Cuenta publica</a></li></ul>',
+            'content' => '<ul><li><a href="#">Alcaldía</a></li><li><a href="#">Concejo municipal</a></li><li><a href="#">Direcciones</a></li><li><a href="#">Cuenta pública</a></li></ul>',
         ),
         array(
             'title'   => __('Servicios', 'sitio-cero'),
-            'content' => '<ul><li><a href="#avisos">Avisos</a></li><li><a href="#">Patentes</a></li><li><a href="#">Permisos de circulacion</a></li><li><a href="#">Pagos municipales</a></li></ul>',
+            'content' => '<ul><li><a href="#avisos">Avisos</a></li><li><a href="#">Patentes</a></li><li><a href="#">Permisos de circulación</a></li><li><a href="#">Pagos municipales</a></li></ul>',
         ),
         array(
             'title'   => __('Transparencia', 'sitio-cero'),
-            'content' => '<ul><li><a href="#">Ley de transparencia</a></li><li><a href="#">Compras publicas</a></li><li><a href="#">Datos abiertos</a></li><li><a href="#">Solicitudes de informacion</a></li></ul>',
+            'content' => '<ul><li><a href="#">Ley de transparencia</a></li><li><a href="#">Compras públicas</a></li><li><a href="#">Datos abiertos</a></li><li><a href="#">Solicitudes de información</a></li></ul>',
         ),
         array(
             'title'   => __('Contacto', 'sitio-cero'),
-            'content' => '<ul><li>Av. Principal 100, Concepcion</li><li>+56 2 3386 8000</li><li>contacto@municipio.cl</li><li>Lun a Vie: 08:30 - 14:00</li></ul>',
+            'content' => '<ul><li>Av. Principal 100, Concepción</li><li>+56 2 3386 8000</li><li>contacto@municipio.cl</li><li>Lun a Vie: 08:30 - 14:00</li></ul>',
         ),
     );
 }
@@ -1929,14 +2053,14 @@ function sitio_cero_register_direccion_municipal_post_type()
 {
     $labels = array(
         'name'               => __('Direcciones municipales', 'sitio-cero'),
-        'singular_name'      => __('Direccion municipal', 'sitio-cero'),
+        'singular_name'      => __('Dirección municipal', 'sitio-cero'),
         'menu_name'          => __('Direcciones', 'sitio-cero'),
-        'name_admin_bar'     => __('Direccion municipal', 'sitio-cero'),
+        'name_admin_bar'     => __('Dirección municipal', 'sitio-cero'),
         'add_new'            => __('Agregar nueva', 'sitio-cero'),
-        'add_new_item'       => __('Agregar direccion municipal', 'sitio-cero'),
-        'new_item'           => __('Nueva direccion municipal', 'sitio-cero'),
-        'edit_item'          => __('Editar direccion municipal', 'sitio-cero'),
-        'view_item'          => __('Ver direccion municipal', 'sitio-cero'),
+        'add_new_item'       => __('Agregar dirección municipal', 'sitio-cero'),
+        'new_item'           => __('Nueva dirección municipal', 'sitio-cero'),
+        'edit_item'          => __('Editar dirección municipal', 'sitio-cero'),
+        'view_item'          => __('Ver dirección municipal', 'sitio-cero'),
         'all_items'          => __('Todas las direcciones', 'sitio-cero'),
         'search_items'       => __('Buscar direcciones', 'sitio-cero'),
         'not_found'          => __('No se encontraron direcciones.', 'sitio-cero'),
@@ -1968,18 +2092,18 @@ function sitio_cero_register_municipalidad_post_type()
 {
     $labels = array(
         'name'               => __('Municipalidad', 'sitio-cero'),
-        'singular_name'      => __('Pagina municipalidad', 'sitio-cero'),
+        'singular_name'      => __('Página municipalidad', 'sitio-cero'),
         'menu_name'          => __('Municipalidad', 'sitio-cero'),
-        'name_admin_bar'     => __('Pagina municipalidad', 'sitio-cero'),
+        'name_admin_bar'     => __('Página municipalidad', 'sitio-cero'),
         'add_new'            => __('Agregar nueva', 'sitio-cero'),
-        'add_new_item'       => __('Agregar pagina municipalidad', 'sitio-cero'),
-        'new_item'           => __('Nueva pagina municipalidad', 'sitio-cero'),
-        'edit_item'          => __('Editar pagina municipalidad', 'sitio-cero'),
-        'view_item'          => __('Ver pagina municipalidad', 'sitio-cero'),
-        'all_items'          => __('Paginas municipalidad', 'sitio-cero'),
-        'search_items'       => __('Buscar paginas municipalidad', 'sitio-cero'),
-        'not_found'          => __('No se encontraron paginas municipalidad.', 'sitio-cero'),
-        'not_found_in_trash' => __('No hay paginas municipalidad en la papelera.', 'sitio-cero'),
+        'add_new_item'       => __('Agregar página municipalidad', 'sitio-cero'),
+        'new_item'           => __('Nueva página municipalidad', 'sitio-cero'),
+        'edit_item'          => __('Editar página municipalidad', 'sitio-cero'),
+        'view_item'          => __('Ver página municipalidad', 'sitio-cero'),
+        'all_items'          => __('Páginas municipalidad', 'sitio-cero'),
+        'search_items'       => __('Buscar páginas municipalidad', 'sitio-cero'),
+        'not_found'          => __('No se encontraron páginas municipalidad.', 'sitio-cero'),
+        'not_found_in_trash' => __('No hay páginas municipalidad en la papelera.', 'sitio-cero'),
     );
 
     register_post_type(
@@ -2006,17 +2130,17 @@ add_action('init', 'sitio_cero_register_municipalidad_post_type');
 function sitio_cero_register_participacion_ciudadana_post_type()
 {
     $labels = array(
-        'name'               => __('Participacion C', 'sitio-cero'),
-        'singular_name'      => __('Participacion C', 'sitio-cero'),
-        'menu_name'          => __('Participacion C', 'sitio-cero'),
-        'name_admin_bar'     => __('Participacion C', 'sitio-cero'),
+        'name'               => __('Participación C', 'sitio-cero'),
+        'singular_name'      => __('Participación C', 'sitio-cero'),
+        'menu_name'          => __('Participación C', 'sitio-cero'),
+        'name_admin_bar'     => __('Participación C', 'sitio-cero'),
         'add_new'            => __('Agregar nueva', 'sitio-cero'),
-        'add_new_item'       => __('Agregar participacion C', 'sitio-cero'),
-        'new_item'           => __('Nueva participacion C', 'sitio-cero'),
-        'edit_item'          => __('Editar participacion C', 'sitio-cero'),
-        'view_item'          => __('Ver participacion C', 'sitio-cero'),
-        'all_items'          => __('Participacion C', 'sitio-cero'),
-        'search_items'       => __('Buscar participacion C', 'sitio-cero'),
+        'add_new_item'       => __('Agregar participación C', 'sitio-cero'),
+        'new_item'           => __('Nueva participación C', 'sitio-cero'),
+        'edit_item'          => __('Editar participación C', 'sitio-cero'),
+        'view_item'          => __('Ver participación C', 'sitio-cero'),
+        'all_items'          => __('Participación C', 'sitio-cero'),
+        'search_items'       => __('Buscar participación C', 'sitio-cero'),
         'not_found'          => __('No se encontraron registros.', 'sitio-cero'),
         'not_found_in_trash' => __('No hay registros en la papelera.', 'sitio-cero'),
     );
@@ -4356,7 +4480,7 @@ function sitio_cero_seed_default_canal_ciudadano()
                 'post_status'  => 'publish',
                 'post_title'   => $title,
                 'post_name'    => $slug,
-                'post_content' => __('Si detectas luminarias apagadas, semaforos con falla o situacion de riesgo vial, ingresa tu reporte en linea y recibe seguimiento.', 'sitio-cero'),
+                'post_content' => __('Si detectas luminarias apagadas, semáforos con falla o situación de riesgo vial, ingresa tu reporte en línea y recibe seguimiento.', 'sitio-cero'),
                 'menu_order'   => 1,
             ),
             true
@@ -4369,7 +4493,7 @@ function sitio_cero_seed_default_canal_ciudadano()
 
     update_post_meta((int) $post_id, '_sitio_cero_demo_canal_ciudadano', '1');
     update_post_meta((int) $post_id, 'sitio_cero_canal_visible', '1');
-    update_post_meta((int) $post_id, 'sitio_cero_canal_button_label', __('Ir a canales de atencion', 'sitio-cero'));
+    update_post_meta((int) $post_id, 'sitio_cero_canal_button_label', __('Ir a canales de atención', 'sitio-cero'));
     update_post_meta((int) $post_id, 'sitio_cero_canal_button_url', '#canales');
 
     update_option('sitio_cero_default_canal_ciudadano_seeded_version', $seed_version);
@@ -4381,7 +4505,7 @@ function sitio_cero_register_evento_municipal_post_type()
     $labels = array(
         'name'               => __('Actividades', 'sitio-cero'),
         'singular_name'      => __('Actividad', 'sitio-cero'),
-        'menu_name'          => __('Proximas actividades', 'sitio-cero'),
+        'menu_name'          => __('Próximas actividades', 'sitio-cero'),
         'name_admin_bar'     => __('Actividad', 'sitio-cero'),
         'add_new'            => __('Agregar nueva', 'sitio-cero'),
         'add_new_item'       => __('Agregar actividad', 'sitio-cero'),
@@ -6869,7 +6993,7 @@ function sitio_cero_add_noticia_metaboxes()
 {
     add_meta_box(
         'sitio_cero_noticia_gallery',
-        __('Galeria de imagenes', 'sitio-cero'),
+        __('Galeria de imágenes', 'sitio-cero'),
         'sitio_cero_render_noticia_gallery_metabox',
         'noticia',
         'normal',
@@ -6883,7 +7007,7 @@ function sitio_cero_render_noticia_gallery_metabox($post)
     wp_nonce_field('sitio_cero_save_noticia_gallery_meta', 'sitio_cero_noticia_gallery_nonce');
 
     $gallery_ids = sitio_cero_get_noticia_gallery_ids($post->ID);
-    $empty_text = __('No hay imagenes seleccionadas. Haz clic en "Seleccionar imagenes".', 'sitio-cero');
+    $empty_text = __('No hay imágenes seleccionadas. Haz clic en "Seleccionar imágenes".', 'sitio-cero');
     ?>
     <div class="sitio-cero-noticia-gallery" data-empty-text="<?php echo esc_attr($empty_text); ?>">
         <input
@@ -6895,7 +7019,7 @@ function sitio_cero_render_noticia_gallery_metabox($post)
 
         <div class="sitio-cero-noticia-gallery__actions">
             <button type="button" class="button button-primary sitio-cero-noticia-gallery__choose">
-                <?php esc_html_e('Seleccionar imagenes', 'sitio-cero'); ?>
+                <?php esc_html_e('Seleccionar imágenes', 'sitio-cero'); ?>
             </button>
             <button type="button" class="button button-secondary sitio-cero-noticia-gallery__clear">
                 <?php esc_html_e('Limpiar galeria', 'sitio-cero'); ?>
@@ -6903,7 +7027,7 @@ function sitio_cero_render_noticia_gallery_metabox($post)
         </div>
 
         <p class="description">
-            <?php esc_html_e('Puedes seleccionar multiples imagenes y arrastrarlas para cambiar el orden.', 'sitio-cero'); ?>
+            <?php esc_html_e('Puedes seleccionar multiples imágenes y arrastrarlas para cambiar el orden.', 'sitio-cero'); ?>
         </p>
 
         <ul class="sitio-cero-noticia-gallery__list">
@@ -10373,3 +10497,1990 @@ function sitio_cero_render_seo_dashboard_widget()
     </div>
     <?php
 }
+
+/* -------------------------------------------------------------------------- */
+/* Plan Regulador (Fase 1: arquitectura mínima funcional) */
+/* -------------------------------------------------------------------------- */
+
+function sitio_cero_register_plan_regulador_post_type()
+{
+    $labels = array(
+        'name'               => __('Plan Regulador', 'sitio-cero'),
+        'singular_name'      => __('Plan Regulador', 'sitio-cero'),
+        'menu_name'          => __('Plan Regulador', 'sitio-cero'),
+        'name_admin_bar'     => __('Plan Regulador', 'sitio-cero'),
+        'add_new'            => __('Agregar nuevo', 'sitio-cero'),
+        'add_new_item'       => __('Agregar Plan Regulador', 'sitio-cero'),
+        'new_item'           => __('Nuevo Plan Regulador', 'sitio-cero'),
+        'edit_item'          => __('Editar Plan Regulador', 'sitio-cero'),
+        'view_item'          => __('Ver Plan Regulador', 'sitio-cero'),
+        'all_items'          => __('Plan Regulador', 'sitio-cero'),
+        'search_items'       => __('Buscar Plan Regulador', 'sitio-cero'),
+        'not_found'          => __('No se encontraron registros.', 'sitio-cero'),
+        'not_found_in_trash' => __('No hay registros en la papelera.', 'sitio-cero'),
+    );
+
+    register_post_type(
+        'plan_regulador',
+        array(
+            'labels'            => $labels,
+            'public'            => true,
+            'show_ui'           => true,
+            'show_in_menu'      => true,
+            'show_in_admin_bar' => true,
+            'show_in_nav_menus' => true,
+            'show_in_rest'      => true,
+            'hierarchical'      => true,
+            'has_archive'       => true,
+            'rewrite'           => array('slug' => 'plan-regulador'),
+            'menu_position'     => 27,
+            'menu_icon'         => 'dashicons-media-document',
+            'supports'          => array('title', 'editor', 'excerpt', 'thumbnail', 'page-attributes', 'revisions'),
+        )
+    );
+}
+add_action('init', 'sitio_cero_register_plan_regulador_post_type');
+
+function sitio_cero_flush_plan_regulador_rewrite_rules_once()
+{
+    if (!post_type_exists('plan_regulador')) {
+        return;
+    }
+
+    $flush_version = '1';
+    $stored_version = (string) get_option('sitio_cero_plan_regulador_rewrite_flushed_version', '');
+    if ($flush_version === $stored_version) {
+        return;
+    }
+
+    flush_rewrite_rules(false);
+    update_option('sitio_cero_plan_regulador_rewrite_flushed_version', $flush_version);
+}
+add_action('init', 'sitio_cero_flush_plan_regulador_rewrite_rules_once', 99);
+
+function sitio_cero_enqueue_plan_regulador_admin_assets($hook_suffix)
+{
+    if ('post.php' !== $hook_suffix && 'post-new.php' !== $hook_suffix) {
+        return;
+    }
+
+    $screen = get_current_screen();
+    if (!$screen || 'plan_regulador' !== $screen->post_type) {
+        return;
+    }
+
+    $version = wp_get_theme()->get('Version');
+
+    wp_enqueue_media();
+
+    wp_enqueue_style(
+        'sitio-cero-admin-direccion-municipal',
+        get_template_directory_uri() . '/assets/css/admin-direccion-municipal.css',
+        array(),
+        $version
+    );
+
+    wp_enqueue_style(
+        'sitio-cero-admin-plan-regulador',
+        get_template_directory_uri() . '/assets/css/admin-plan-regulador.css',
+        array('sitio-cero-admin-direccion-municipal'),
+        $version
+    );
+
+    wp_enqueue_script(
+        'sitio-cero-admin-plan-regulador',
+        get_template_directory_uri() . '/assets/js/admin-plan-regulador.js',
+        array('jquery', 'jquery-ui-sortable'),
+        $version,
+        true
+    );
+
+    wp_localize_script(
+        'sitio-cero-admin-plan-regulador',
+        'sitioCeroPlanRegulador',
+        array(
+            'groupLabel'  => __('Grupo', 'sitio-cero'),
+            'sectionLabel'=> __('Sección', 'sitio-cero'),
+            'frameTitle'  => __('Selecciona documento', 'sitio-cero'),
+            'frameButton' => __('Usar documento', 'sitio-cero'),
+        )
+    );
+}
+add_action('admin_enqueue_scripts', 'sitio_cero_enqueue_plan_regulador_admin_assets');
+
+function sitio_cero_add_plan_regulador_metaboxes()
+{
+    add_meta_box(
+        'sitio_cero_plan_regulador_datos',
+        __('Repositorio documental del Plan Regulador', 'sitio-cero'),
+        'sitio_cero_render_plan_regulador_metabox',
+        'plan_regulador',
+        'normal',
+        'high'
+    );
+}
+add_action('add_meta_boxes', 'sitio_cero_add_plan_regulador_metaboxes');
+
+function sitio_cero_get_plan_regulador_group_categories()
+{
+    return array(
+        'prcc'                 => __('PRCC', 'sitio-cero'),
+        'sector-ribera-norte'  => __('Sector Ribera Norte', 'sitio-cero'),
+        'enmienda'             => __('Enmienda', 'sitio-cero'),
+        'modificacion'         => __('Modificación', 'sitio-cero'),
+        'plano-detalle'        => __('Plano de Detalle', 'sitio-cero'),
+        'otro'                 => __('Otro', 'sitio-cero'),
+    );
+}
+
+function sitio_cero_get_plan_regulador_document_types()
+{
+    return array(
+        'decreto'         => __('Decreto', 'sitio-cero'),
+        'memoria'         => __('Memoria', 'sitio-cero'),
+        'plano'           => __('Plano', 'sitio-cero'),
+        'diario-oficial'  => __('Diario Oficial', 'sitio-cero'),
+        'informe'         => __('Informe', 'sitio-cero'),
+        'resolucion'      => __('Resolución', 'sitio-cero'),
+        'otro'            => __('Otro', 'sitio-cero'),
+    );
+}
+
+function sitio_cero_plan_regulador_normalize_documents($documents)
+{
+    if (!is_array($documents)) {
+        return array();
+    }
+
+    $valid_types = array_keys(sitio_cero_get_plan_regulador_document_types());
+    $clean = array();
+
+    foreach ($documents as $document) {
+        if (!is_array($document)) {
+            continue;
+        }
+
+        $title = isset($document['title']) ? sanitize_text_field((string) $document['title']) : '';
+        $url = isset($document['url']) ? esc_url_raw((string) $document['url']) : '';
+        $type = isset($document['type']) ? sanitize_key((string) $document['type']) : '';
+        $date = isset($document['date']) ? sanitize_text_field((string) $document['date']) : '';
+        $label = isset($document['label']) ? sanitize_text_field((string) $document['label']) : '';
+        $featured = !empty($document['featured']) ? '1' : '';
+
+        if (!in_array($type, $valid_types, true)) {
+            $type = '';
+        }
+
+        if ('' === $title && '' === $url) {
+            continue;
+        }
+
+        $clean[] = array(
+            'title'    => $title,
+            'url'      => $url,
+            'type'     => $type,
+            'date'     => $date,
+            'label'    => $label,
+            'featured' => $featured,
+        );
+    }
+
+    return $clean;
+}
+
+function sitio_cero_sanitize_plan_regulador_document_groups($groups)
+{
+    if (is_string($groups)) {
+        $decoded = json_decode($groups, true);
+        $groups = is_array($decoded) ? $decoded : array();
+    }
+
+    if (!is_array($groups)) {
+        return array();
+    }
+
+    $valid_categories = array_keys(sitio_cero_get_plan_regulador_group_categories());
+    $clean_groups = array();
+
+    foreach ($groups as $group_index => $group) {
+        if (!is_array($group)) {
+            continue;
+        }
+
+        $title = isset($group['title']) ? sanitize_text_field((string) $group['title']) : '';
+        $year = isset($group['year']) ? sanitize_text_field((string) $group['year']) : '';
+        $category = isset($group['category']) ? sanitize_key((string) $group['category']) : '';
+        $description = isset($group['description']) ? sanitize_textarea_field((string) $group['description']) : '';
+        $visual_column = isset($group['visual_column']) ? sanitize_key((string) $group['visual_column']) : 'right';
+        $manual_order = isset($group['manual_order']) ? absint($group['manual_order']) : absint($group_index);
+        $documents = isset($group['documents']) ? sitio_cero_plan_regulador_normalize_documents($group['documents']) : array();
+
+        if (!in_array($category, $valid_categories, true)) {
+            $category = '';
+        }
+        if (!in_array($visual_column, array('left', 'right'), true)) {
+            $visual_column = 'right';
+        }
+
+        if ('' === $title && empty($documents)) {
+            continue;
+        }
+
+        $clean_groups[] = array(
+            'title'       => $title,
+            'year'        => $year,
+            'category'    => $category,
+            'description' => $description,
+            'visual_column' => $visual_column,
+            'manual_order' => $manual_order,
+            'documents'   => $documents,
+        );
+    }
+
+    return $clean_groups;
+}
+
+function sitio_cero_get_plan_regulador_document_groups($post_id)
+{
+    $post_id = absint($post_id);
+    if ($post_id <= 0) {
+        return array();
+    }
+
+    $raw = get_post_meta($post_id, 'sitio_cero_plan_regulador_document_groups', true);
+    if (!is_array($raw) && !is_string($raw)) {
+        return array();
+    }
+
+    return sitio_cero_sanitize_plan_regulador_document_groups($raw);
+}
+
+function sitio_cero_render_plan_regulador_metabox($post)
+{
+    wp_nonce_field('sitio_cero_save_plan_regulador_meta', 'sitio_cero_plan_regulador_meta_nonce');
+
+    $subtitle = get_post_meta($post->ID, 'sitio_cero_plan_regulador_subtitulo', true);
+    $lead = get_post_meta($post->ID, 'sitio_cero_plan_regulador_bajada', true);
+    $cta_text = get_post_meta($post->ID, 'sitio_cero_plan_regulador_cta_texto', true);
+    $cta_url = get_post_meta($post->ID, 'sitio_cero_plan_regulador_cta_url', true);
+    $groups = sitio_cero_get_plan_regulador_document_groups($post->ID);
+    $custom_html = get_post_meta($post->ID, 'sitio_cero_plan_regulador_custom_html', true);
+    $custom_css = get_post_meta($post->ID, 'sitio_cero_plan_regulador_custom_css', true);
+
+    $sections = get_post_meta($post->ID, 'sitio_cero_plan_regulador_sections', true);
+    if (!is_array($sections)) {
+        $sections = array();
+    }
+
+    if (!is_string($subtitle)) {
+        $subtitle = '';
+    }
+    if (!is_string($lead)) {
+        $lead = '';
+    }
+    if (!is_string($cta_text)) {
+        $cta_text = '';
+    }
+    if (!is_string($cta_url)) {
+        $cta_url = '';
+    }
+    if (!is_string($custom_html)) {
+        $custom_html = '';
+    }
+    if (!is_string($custom_css)) {
+        $custom_css = '';
+    }
+
+    if (empty($groups)) {
+        $groups[] = array(
+            'title'       => __('Grupo documental', 'sitio-cero'),
+            'year'        => '',
+            'category'    => '',
+            'description' => '',
+            'visual_column' => 'right',
+            'manual_order' => 0,
+            'documents'   => array(
+                array(
+                    'title'    => '',
+                    'url'      => '',
+                    'type'     => '',
+                    'date'     => '',
+                    'label'    => '',
+                    'featured' => '',
+                ),
+            ),
+        );
+    }
+
+    if (empty($sections)) {
+        $sections[] = array(
+            'title'   => '',
+            'content' => '',
+        );
+    }
+
+    $group_categories = sitio_cero_get_plan_regulador_group_categories();
+    $document_types = sitio_cero_get_plan_regulador_document_types();
+    ?>
+    <div class="sitio-cero-dm-metabox">
+        <h3><?php esc_html_e('Hero / Encabezado', 'sitio-cero'); ?></h3>
+        <div class="sitio-cero-prc-grid">
+            <p>
+                <label for="sitio_cero_plan_regulador_subtitulo"><strong><?php esc_html_e('Subtítulo breve', 'sitio-cero'); ?></strong></label>
+                <input id="sitio_cero_plan_regulador_subtitulo" type="text" class="widefat" name="sitio_cero_plan_regulador_subtitulo" value="<?php echo esc_attr($subtitle); ?>">
+            </p>
+            <p>
+                <label for="sitio_cero_plan_regulador_bajada"><strong><?php esc_html_e('Bajada descriptiva', 'sitio-cero'); ?></strong></label>
+                <input id="sitio_cero_plan_regulador_bajada" type="text" class="widefat" name="sitio_cero_plan_regulador_bajada" value="<?php echo esc_attr($lead); ?>">
+            </p>
+            <p>
+                <label for="sitio_cero_plan_regulador_cta_texto"><strong><?php esc_html_e('Texto CTA (opcional)', 'sitio-cero'); ?></strong></label>
+                <input id="sitio_cero_plan_regulador_cta_texto" type="text" class="widefat" name="sitio_cero_plan_regulador_cta_texto" value="<?php echo esc_attr($cta_text); ?>">
+            </p>
+            <p>
+                <label for="sitio_cero_plan_regulador_cta_url"><strong><?php esc_html_e('Enlace CTA (opcional)', 'sitio-cero'); ?></strong></label>
+                <input id="sitio_cero_plan_regulador_cta_url" type="url" class="widefat" name="sitio_cero_plan_regulador_cta_url" value="<?php echo esc_attr(esc_url_raw($cta_url)); ?>">
+            </p>
+        </div>
+
+        <hr>
+        <h3><?php esc_html_e('Grupos documentales', 'sitio-cero'); ?></h3>
+        <p class="description"><?php esc_html_e('Crea grupos y asocia documentos con enlace, tipo, fecha y etiquetas.', 'sitio-cero'); ?></p>
+
+        <?php
+        $render_group_row = static function ($group, $group_index, $group_categories, $document_types, $template_mode = false) {
+            $group_title = isset($group['title']) ? (string) $group['title'] : '';
+            $group_year = isset($group['year']) ? (string) $group['year'] : '';
+            $group_category = isset($group['category']) ? sanitize_key((string) $group['category']) : '';
+            $group_description = isset($group['description']) ? (string) $group['description'] : '';
+            $group_visual_column = isset($group['visual_column']) ? sanitize_key((string) $group['visual_column']) : 'right';
+            $group_manual_order = isset($group['manual_order']) ? absint($group['manual_order']) : 0;
+            if (!in_array($group_visual_column, array('left', 'right'), true)) {
+                $group_visual_column = 'right';
+            }
+
+            $group_documents = isset($group['documents']) && is_array($group['documents']) ? $group['documents'] : array();
+            if (empty($group_documents)) {
+                $group_documents[] = array();
+            }
+            ?>
+            <div class="sitio-cero-dm-resource-block prc-admin-group-card" data-prc-group-row data-group-index="<?php echo esc_attr((string) $group_index); ?>">
+                <div class="sitio-cero-prc-group-head prc-admin-group-card__bar">
+                    <span class="prc-admin-group-card__drag material-symbols-outlined" aria-hidden="true">drag_indicator</span>
+                    <strong data-prc-group-label><?php esc_html_e('Grupo', 'sitio-cero'); ?></strong>
+                    <span class="prc-admin-group-card__title" data-prc-group-title-preview><?php echo esc_html($group_title); ?></span>
+                    <button type="button" class="button button-secondary button-small prc-admin-group-card__toggle" data-prc-group-toggle><?php esc_html_e('Editar', 'sitio-cero'); ?></button>
+                    <button type="button" class="button-link-delete" data-prc-group-remove><?php esc_html_e('Quitar', 'sitio-cero'); ?></button>
+                </div>
+
+                <div class="prc-admin-group-editor" data-prc-group-editor>
+                    <div class="sitio-cero-prc-grid">
+                        <p>
+                            <label><strong><?php esc_html_e('Título del grupo', 'sitio-cero'); ?></strong></label>
+                            <input type="text" class="widefat" name="sitio_cero_plan_regulador_group_title[]" value="<?php echo esc_attr($group_title); ?>" data-prc-group-title-input>
+                        </p>
+                        <p>
+                            <label><strong><?php esc_html_e('Año (opcional)', 'sitio-cero'); ?></strong></label>
+                            <input type="text" class="widefat" name="sitio_cero_plan_regulador_group_year[]" value="<?php echo esc_attr($group_year); ?>" placeholder="2004">
+                        </p>
+                        <p>
+                            <label><strong><?php esc_html_e('Categoría (opcional)', 'sitio-cero'); ?></strong></label>
+                            <select class="widefat" name="sitio_cero_plan_regulador_group_category[]">
+                                <option value=""><?php esc_html_e('Sin categoría', 'sitio-cero'); ?></option>
+                                <?php foreach ($group_categories as $key => $label) : ?>
+                                    <option value="<?php echo esc_attr($key); ?>"<?php selected($group_category, $key); ?>><?php echo esc_html($label); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </p>
+                        <p>
+                            <label><strong><?php esc_html_e('Orden en la columna', 'sitio-cero'); ?></strong></label>
+                            <input type="number" class="widefat" min="0" step="1" value="<?php echo esc_attr((string) $group_manual_order); ?>" data-prc-group-manual-order-input readonly>
+                        </p>
+                        <p>
+                            <label><strong><?php esc_html_e('Descripción (opcional)', 'sitio-cero'); ?></strong></label>
+                            <textarea class="widefat" rows="3" name="sitio_cero_plan_regulador_group_description[]"><?php echo esc_textarea($group_description); ?></textarea>
+                        </p>
+                    </div>
+
+                    <div class="sitio-cero-prc-documents prc-admin-documents" data-prc-documents>
+                        <div class="sitio-cero-prc-documents__list" data-prc-documents-list>
+                            <?php foreach ($group_documents as $document) : ?>
+                                <?php
+                                $document_title = isset($document['title']) ? (string) $document['title'] : '';
+                                $document_url = isset($document['url']) ? (string) $document['url'] : '';
+                                $document_type = isset($document['type']) ? sanitize_key((string) $document['type']) : '';
+                                $document_date = isset($document['date']) ? (string) $document['date'] : '';
+                                $document_label = isset($document['label']) ? (string) $document['label'] : '';
+                                ?>
+                                <div class="sitio-cero-prc-document prc-admin-document-row" data-prc-document-row>
+                                    <div class="sitio-cero-prc-document__grid prc-admin-document-editor">
+                                        <p>
+                                            <label><strong><?php esc_html_e('Título del documento', 'sitio-cero'); ?></strong></label>
+                                            <input type="text" class="widefat" name="sitio_cero_plan_regulador_document_title[<?php echo esc_attr((string) $group_index); ?>][]" value="<?php echo esc_attr($document_title); ?>" data-prc-document-title>
+                                        </p>
+                                        <p>
+                                            <label><strong><?php esc_html_e('Tipo (opcional)', 'sitio-cero'); ?></strong></label>
+                                            <select class="widefat" name="sitio_cero_plan_regulador_document_type[<?php echo esc_attr((string) $group_index); ?>][]">
+                                                <option value=""><?php esc_html_e('Sin tipo', 'sitio-cero'); ?></option>
+                                                <?php foreach ($document_types as $type_key => $type_label) : ?>
+                                                    <option value="<?php echo esc_attr($type_key); ?>"<?php selected($document_type, $type_key); ?>><?php echo esc_html($type_label); ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </p>
+                                        <p>
+                                            <label><strong><?php esc_html_e('Fecha (opcional)', 'sitio-cero'); ?></strong></label>
+                                            <input type="text" class="widefat" name="sitio_cero_plan_regulador_document_date[<?php echo esc_attr((string) $group_index); ?>][]" value="<?php echo esc_attr($document_date); ?>" placeholder="07.08.2001">
+                                        </p>
+                                        <p>
+                                            <label><strong><?php esc_html_e('Etiqueta (opcional)', 'sitio-cero'); ?></strong></label>
+                                            <input type="text" class="widefat" name="sitio_cero_plan_regulador_document_label[<?php echo esc_attr((string) $group_index); ?>][]" value="<?php echo esc_attr($document_label); ?>">
+                                        </p>
+                                    </div>
+
+                                    <p class="sitio-cero-prc-document__url">
+                                        <span>
+                                            <label><strong><?php esc_html_e('URL del documento', 'sitio-cero'); ?></strong></label>
+                                            <input type="url" class="widefat" name="sitio_cero_plan_regulador_document_url[<?php echo esc_attr((string) $group_index); ?>][]" value="<?php echo esc_attr(esc_url_raw($document_url)); ?>" data-prc-document-url>
+                                        </span>
+                                        <button type="button" class="button media-button" data-prc-document-pick-file><?php esc_html_e('Biblioteca', 'sitio-cero'); ?></button>
+                                    </p>
+
+                                    <div class="sitio-cero-prc-document__actions">
+                                        <button type="button" class="button-link-delete" data-prc-document-remove><?php esc_html_e('Quitar', 'sitio-cero'); ?></button>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <button type="button" class="button button-secondary" data-prc-document-add><?php esc_html_e('Agregar documento', 'sitio-cero'); ?></button>
+
+                        <template data-prc-document-template>
+                            <div class="sitio-cero-prc-document prc-admin-document-row" data-prc-document-row>
+                                <div class="sitio-cero-prc-document__grid prc-admin-document-editor">
+                                    <p>
+                                        <label><strong><?php esc_html_e('Título del documento', 'sitio-cero'); ?></strong></label>
+                                        <input type="text" class="widefat" name="sitio_cero_plan_regulador_document_title[<?php echo esc_attr((string) $group_index); ?>][]" value="" data-prc-document-title>
+                                    </p>
+                                    <p>
+                                        <label><strong><?php esc_html_e('Tipo (opcional)', 'sitio-cero'); ?></strong></label>
+                                        <select class="widefat" name="sitio_cero_plan_regulador_document_type[<?php echo esc_attr((string) $group_index); ?>][]">
+                                            <option value=""><?php esc_html_e('Sin tipo', 'sitio-cero'); ?></option>
+                                            <?php foreach ($document_types as $type_key => $type_label) : ?>
+                                                <option value="<?php echo esc_attr($type_key); ?>"><?php echo esc_html($type_label); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </p>
+                                    <p>
+                                        <label><strong><?php esc_html_e('Fecha (opcional)', 'sitio-cero'); ?></strong></label>
+                                        <input type="text" class="widefat" name="sitio_cero_plan_regulador_document_date[<?php echo esc_attr((string) $group_index); ?>][]" value="" placeholder="07.08.2001">
+                                    </p>
+                                    <p>
+                                        <label><strong><?php esc_html_e('Etiqueta (opcional)', 'sitio-cero'); ?></strong></label>
+                                        <input type="text" class="widefat" name="sitio_cero_plan_regulador_document_label[<?php echo esc_attr((string) $group_index); ?>][]" value="">
+                                    </p>
+                                </div>
+
+                                <p class="sitio-cero-prc-document__url">
+                                    <span>
+                                        <label><strong><?php esc_html_e('URL del documento', 'sitio-cero'); ?></strong></label>
+                                        <input type="url" class="widefat" name="sitio_cero_plan_regulador_document_url[<?php echo esc_attr((string) $group_index); ?>][]" value="" data-prc-document-url>
+                                    </span>
+                                    <button type="button" class="button media-button" data-prc-document-pick-file><?php esc_html_e('Biblioteca', 'sitio-cero'); ?></button>
+                                </p>
+
+                                <div class="sitio-cero-prc-document__actions">
+                                    <button type="button" class="button-link-delete" data-prc-document-remove><?php esc_html_e('Quitar', 'sitio-cero'); ?></button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <input type="hidden" name="sitio_cero_plan_regulador_group_visual_column[]" value="<?php echo esc_attr($group_visual_column); ?>" data-prc-group-visual-column>
+                <input type="hidden" name="sitio_cero_plan_regulador_group_manual_order[]" value="<?php echo esc_attr((string) $group_manual_order); ?>" data-prc-group-manual-order>
+            </div>
+            <?php
+        };
+        ?>
+        <div class="sitio-cero-prc-groups" data-prc-groups>
+            <div class="prc-admin-columns">
+                <section class="prc-admin-column">
+                    <header class="prc-admin-column__head">
+                        <h4><?php esc_html_e('Columna izquierda', 'sitio-cero'); ?></h4>
+                    </header>
+                    <div class="sitio-cero-prc-groups__list prc-admin-column-list" data-prc-column-list="left"></div>
+                    <button type="button" class="button button-secondary" data-prc-group-add data-target-column="left"><?php esc_html_e('Agregar grupo a columna izquierda', 'sitio-cero'); ?></button>
+                </section>
+                <section class="prc-admin-column">
+                    <header class="prc-admin-column__head">
+                        <h4><?php esc_html_e('Columna derecha', 'sitio-cero'); ?></h4>
+                    </header>
+                    <div class="sitio-cero-prc-groups__list prc-admin-column-list" data-prc-column-list="right">
+                        <?php foreach ($groups as $group_index => $group) : ?>
+                            <?php $render_group_row($group, $group_index, $group_categories, $document_types); ?>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" class="button button-primary" data-prc-group-add data-target-column="right"><?php esc_html_e('Agregar grupo a columna derecha', 'sitio-cero'); ?></button>
+                </section>
+            </div>
+
+            <template data-prc-group-template>
+                <?php $render_group_row(array('visual_column' => 'right', 'manual_order' => 0), '__KEY__', $group_categories, $document_types, true); ?>
+            </template>
+        </div>
+
+        <hr>
+        <h3><?php esc_html_e('Secciones libres opcionales', 'sitio-cero'); ?></h3>
+        <p class="description"><?php esc_html_e('Agrega bloques libres con título y contenido HTML sanitizado.', 'sitio-cero'); ?></p>
+
+        <div class="sitio-cero-prc-sections" data-prc-sections>
+            <div class="sitio-cero-prc-sections__list" data-prc-sections-list>
+                <?php foreach ($sections as $section_index => $section) : ?>
+                    <?php
+                    $section_title = isset($section['title']) ? (string) $section['title'] : '';
+                    $section_content = isset($section['content']) ? (string) $section['content'] : '';
+                    ?>
+                    <div class="sitio-cero-prc-section" data-prc-section-row data-section-index="<?php echo esc_attr((string) $section_index); ?>">
+                        <div class="sitio-cero-prc-section__head">
+                            <strong data-prc-section-label><?php echo esc_html(sprintf(__('Sección %d', 'sitio-cero'), $section_index + 1)); ?></strong>
+                            <button type="button" class="button-link-delete" data-prc-section-remove><?php esc_html_e('Quitar', 'sitio-cero'); ?></button>
+                        </div>
+                        <p>
+                            <label><strong><?php esc_html_e('Título', 'sitio-cero'); ?></strong></label>
+                            <input type="text" class="widefat" name="sitio_cero_plan_regulador_section_title[]" value="<?php echo esc_attr($section_title); ?>">
+                        </p>
+                        <p>
+                            <label><strong><?php esc_html_e('Contenido (HTML)', 'sitio-cero'); ?></strong></label>
+                            <textarea class="widefat" rows="6" name="sitio_cero_plan_regulador_section_content[]"><?php echo esc_textarea($section_content); ?></textarea>
+                        </p>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <button type="button" class="button button-secondary" data-prc-section-add><?php esc_html_e('Agregar sección libre', 'sitio-cero'); ?></button>
+
+            <template data-prc-section-template>
+                <div class="sitio-cero-prc-section" data-prc-section-row>
+                    <div class="sitio-cero-prc-section__head">
+                        <strong data-prc-section-label><?php esc_html_e('Sección', 'sitio-cero'); ?></strong>
+                        <button type="button" class="button-link-delete" data-prc-section-remove><?php esc_html_e('Quitar', 'sitio-cero'); ?></button>
+                    </div>
+                    <p>
+                        <label><strong><?php esc_html_e('Título', 'sitio-cero'); ?></strong></label>
+                        <input type="text" class="widefat" name="sitio_cero_plan_regulador_section_title[]" value="">
+                    </p>
+                    <p>
+                        <label><strong><?php esc_html_e('Contenido (HTML)', 'sitio-cero'); ?></strong></label>
+                        <textarea class="widefat" rows="6" name="sitio_cero_plan_regulador_section_content[]"></textarea>
+                    </p>
+                </div>
+            </template>
+        </div>
+
+        <hr>
+        <h3><?php esc_html_e('HTML y CSS libre', 'sitio-cero'); ?></h3>
+        <p>
+            <label for="sitio_cero_plan_regulador_custom_html"><strong><?php esc_html_e('HTML libre (opcional)', 'sitio-cero'); ?></strong></label>
+            <textarea id="sitio_cero_plan_regulador_custom_html" class="widefat" rows="6" name="sitio_cero_plan_regulador_custom_html"><?php echo esc_textarea($custom_html); ?></textarea>
+        </p>
+        <p>
+            <label for="sitio_cero_plan_regulador_custom_css"><strong><?php esc_html_e('CSS libre (opcional)', 'sitio-cero'); ?></strong></label>
+            <textarea id="sitio_cero_plan_regulador_custom_css" class="widefat" rows="6" name="sitio_cero_plan_regulador_custom_css" placeholder="<?php esc_attr_e('Usa {{selector}} para apuntar este contenido.', 'sitio-cero'); ?>"><?php echo esc_textarea($custom_css); ?></textarea>
+            <small><?php esc_html_e('Se usa la misma sanitización aplicada en Direcciones.', 'sitio-cero'); ?></small>
+        </p>
+    </div>
+    <?php
+}
+
+function sitio_cero_save_plan_regulador_meta($post_id)
+{
+    if (!isset($_POST['sitio_cero_plan_regulador_meta_nonce'])) {
+        return;
+    }
+
+    $nonce = sanitize_text_field(wp_unslash($_POST['sitio_cero_plan_regulador_meta_nonce']));
+    if (!wp_verify_nonce($nonce, 'sitio_cero_save_plan_regulador_meta')) {
+        return;
+    }
+
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return;
+    }
+
+    if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+        return;
+    }
+
+    if (!current_user_can('edit_post', $post_id)) {
+        return;
+    }
+
+    $subtitle = isset($_POST['sitio_cero_plan_regulador_subtitulo'])
+        ? sanitize_text_field(wp_unslash($_POST['sitio_cero_plan_regulador_subtitulo']))
+        : '';
+    $lead = isset($_POST['sitio_cero_plan_regulador_bajada'])
+        ? sanitize_text_field(wp_unslash($_POST['sitio_cero_plan_regulador_bajada']))
+        : '';
+    $cta_text = isset($_POST['sitio_cero_plan_regulador_cta_texto'])
+        ? sanitize_text_field(wp_unslash($_POST['sitio_cero_plan_regulador_cta_texto']))
+        : '';
+    $cta_url = isset($_POST['sitio_cero_plan_regulador_cta_url'])
+        ? esc_url_raw(wp_unslash($_POST['sitio_cero_plan_regulador_cta_url']))
+        : '';
+
+    if ('' !== $subtitle) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_subtitulo', $subtitle);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_plan_regulador_subtitulo');
+    }
+
+    if ('' !== $lead) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_bajada', $lead);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_plan_regulador_bajada');
+    }
+
+    if ('' !== $cta_text) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_cta_texto', $cta_text);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_plan_regulador_cta_texto');
+    }
+
+    if ('' !== $cta_url) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_cta_url', $cta_url);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_plan_regulador_cta_url');
+    }
+
+    $group_titles = isset($_POST['sitio_cero_plan_regulador_group_title']) && is_array($_POST['sitio_cero_plan_regulador_group_title'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_group_title'])
+        : array();
+    $group_years = isset($_POST['sitio_cero_plan_regulador_group_year']) && is_array($_POST['sitio_cero_plan_regulador_group_year'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_group_year'])
+        : array();
+    $group_categories = isset($_POST['sitio_cero_plan_regulador_group_category']) && is_array($_POST['sitio_cero_plan_regulador_group_category'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_group_category'])
+        : array();
+    $group_descriptions = isset($_POST['sitio_cero_plan_regulador_group_description']) && is_array($_POST['sitio_cero_plan_regulador_group_description'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_group_description'])
+        : array();
+    $group_visual_columns = isset($_POST['sitio_cero_plan_regulador_group_visual_column']) && is_array($_POST['sitio_cero_plan_regulador_group_visual_column'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_group_visual_column'])
+        : array();
+    $group_manual_orders = isset($_POST['sitio_cero_plan_regulador_group_manual_order']) && is_array($_POST['sitio_cero_plan_regulador_group_manual_order'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_group_manual_order'])
+        : array();
+
+    $document_titles = isset($_POST['sitio_cero_plan_regulador_document_title']) && is_array($_POST['sitio_cero_plan_regulador_document_title'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_document_title'])
+        : array();
+    $document_urls = isset($_POST['sitio_cero_plan_regulador_document_url']) && is_array($_POST['sitio_cero_plan_regulador_document_url'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_document_url'])
+        : array();
+    $document_types = isset($_POST['sitio_cero_plan_regulador_document_type']) && is_array($_POST['sitio_cero_plan_regulador_document_type'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_document_type'])
+        : array();
+    $document_dates = isset($_POST['sitio_cero_plan_regulador_document_date']) && is_array($_POST['sitio_cero_plan_regulador_document_date'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_document_date'])
+        : array();
+    $document_labels = isset($_POST['sitio_cero_plan_regulador_document_label']) && is_array($_POST['sitio_cero_plan_regulador_document_label'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_document_label'])
+        : array();
+    $document_featured = isset($_POST['sitio_cero_plan_regulador_document_featured']) && is_array($_POST['sitio_cero_plan_regulador_document_featured'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_document_featured'])
+        : array();
+
+    $document_titles = array_values($document_titles);
+    $document_urls = array_values($document_urls);
+    $document_types = array_values($document_types);
+    $document_dates = array_values($document_dates);
+    $document_labels = array_values($document_labels);
+    $document_featured = array_values($document_featured);
+
+    $group_total = max(
+        count($group_titles),
+        count($group_years),
+        count($group_categories),
+        count($group_descriptions),
+        count($group_visual_columns),
+        count($group_manual_orders)
+    );
+    $groups = array();
+
+    for ($group_index = 0; $group_index < $group_total; $group_index++) {
+        $group_title = isset($group_titles[$group_index]) ? sanitize_text_field((string) $group_titles[$group_index]) : '';
+        $group_year = isset($group_years[$group_index]) ? sanitize_text_field((string) $group_years[$group_index]) : '';
+        $group_category = isset($group_categories[$group_index]) ? sanitize_key((string) $group_categories[$group_index]) : '';
+        $group_description = isset($group_descriptions[$group_index]) ? sanitize_textarea_field((string) $group_descriptions[$group_index]) : '';
+        $group_visual_column = isset($group_visual_columns[$group_index]) ? sanitize_key((string) $group_visual_columns[$group_index]) : 'right';
+        if (!in_array($group_visual_column, array('left', 'right'), true)) {
+            $group_visual_column = 'right';
+        }
+        $group_manual_order = isset($group_manual_orders[$group_index]) && '' !== trim((string) $group_manual_orders[$group_index])
+            ? absint($group_manual_orders[$group_index])
+            : absint($group_index);
+
+        $group_document_titles = isset($document_titles[$group_index]) && is_array($document_titles[$group_index]) ? $document_titles[$group_index] : array();
+        $group_document_urls = isset($document_urls[$group_index]) && is_array($document_urls[$group_index]) ? $document_urls[$group_index] : array();
+        $group_document_types = isset($document_types[$group_index]) && is_array($document_types[$group_index]) ? $document_types[$group_index] : array();
+        $group_document_dates = isset($document_dates[$group_index]) && is_array($document_dates[$group_index]) ? $document_dates[$group_index] : array();
+        $group_document_labels = isset($document_labels[$group_index]) && is_array($document_labels[$group_index]) ? $document_labels[$group_index] : array();
+        $group_document_featured = isset($document_featured[$group_index]) && is_array($document_featured[$group_index]) ? $document_featured[$group_index] : array();
+
+        $document_total = max(
+            count($group_document_titles),
+            count($group_document_urls),
+            count($group_document_types),
+            count($group_document_dates),
+            count($group_document_labels),
+            count($group_document_featured)
+        );
+
+        $documents = array();
+
+        for ($document_index = 0; $document_index < $document_total; $document_index++) {
+            $title = isset($group_document_titles[$document_index]) ? sanitize_text_field((string) $group_document_titles[$document_index]) : '';
+            $url = isset($group_document_urls[$document_index]) ? esc_url_raw((string) $group_document_urls[$document_index]) : '';
+            $type = isset($group_document_types[$document_index]) ? sanitize_key((string) $group_document_types[$document_index]) : '';
+            $date = isset($group_document_dates[$document_index]) ? sanitize_text_field((string) $group_document_dates[$document_index]) : '';
+            $label = isset($group_document_labels[$document_index]) ? sanitize_text_field((string) $group_document_labels[$document_index]) : '';
+            $featured = isset($group_document_featured[$document_index]) && '1' === (string) $group_document_featured[$document_index] ? '1' : '';
+
+            if ('' === $title && '' === $url) {
+                continue;
+            }
+
+            $documents[] = array(
+                'title'    => $title,
+                'url'      => $url,
+                'type'     => $type,
+                'date'     => $date,
+                'label'    => $label,
+                'featured' => $featured,
+            );
+        }
+
+        if ('' === $group_title && empty($documents)) {
+            continue;
+        }
+
+        $groups[] = array(
+            'title'       => $group_title,
+            'year'        => $group_year,
+            'category'    => $group_category,
+            'description' => $group_description,
+            'visual_column' => $group_visual_column,
+            'manual_order' => $group_manual_order,
+            'documents'   => $documents,
+        );
+    }
+
+    $groups = sitio_cero_sanitize_plan_regulador_document_groups($groups);
+
+    if (!empty($groups)) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_document_groups', $groups);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_plan_regulador_document_groups');
+    }
+
+    $section_titles = isset($_POST['sitio_cero_plan_regulador_section_title']) && is_array($_POST['sitio_cero_plan_regulador_section_title'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_section_title'])
+        : array();
+    $section_contents = isset($_POST['sitio_cero_plan_regulador_section_content']) && is_array($_POST['sitio_cero_plan_regulador_section_content'])
+        ? wp_unslash($_POST['sitio_cero_plan_regulador_section_content'])
+        : array();
+
+    $section_total = max(count($section_titles), count($section_contents));
+    $sections = array();
+
+    for ($section_index = 0; $section_index < $section_total; $section_index++) {
+        $section_title = isset($section_titles[$section_index]) ? sanitize_text_field((string) $section_titles[$section_index]) : '';
+        $section_content = isset($section_contents[$section_index])
+            ? sitio_cero_sanitize_direccion_html((string) $section_contents[$section_index])
+            : '';
+
+        if ('' === $section_title && '' === trim((string) wp_strip_all_tags($section_content))) {
+            continue;
+        }
+
+        $sections[] = array(
+            'title'   => $section_title,
+            'content' => $section_content,
+        );
+    }
+
+    if (!empty($sections)) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_sections', $sections);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_plan_regulador_sections');
+    }
+
+    $custom_html = '';
+    if (isset($_POST['sitio_cero_plan_regulador_custom_html'])) {
+        $custom_html = sitio_cero_sanitize_direccion_html(wp_unslash($_POST['sitio_cero_plan_regulador_custom_html']));
+    }
+
+    if ('' !== $custom_html) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_custom_html', $custom_html);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_plan_regulador_custom_html');
+    }
+
+    $custom_css = '';
+    if (isset($_POST['sitio_cero_plan_regulador_custom_css'])) {
+        $custom_css = wp_unslash($_POST['sitio_cero_plan_regulador_custom_css']);
+        if (!current_user_can('unfiltered_html')) {
+            $custom_css = sanitize_textarea_field($custom_css);
+        }
+
+        if (function_exists('sitio_cero_sanitize_tramite_custom_css')) {
+            $custom_css = sitio_cero_sanitize_tramite_custom_css($custom_css);
+        } else {
+            $custom_css = trim((string) wp_kses((string) $custom_css, array()));
+        }
+    }
+
+    if ('' !== $custom_css) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_custom_css', $custom_css);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_plan_regulador_custom_css');
+    }
+}
+add_action('save_post_plan_regulador', 'sitio_cero_save_plan_regulador_meta');
+
+function sitio_cero_enqueue_plan_regulador_custom_css()
+{
+    if (!is_singular('plan_regulador')) {
+        return;
+    }
+
+    $post_id = get_queried_object_id();
+    if ($post_id <= 0) {
+        return;
+    }
+
+    $custom_css = get_post_meta($post_id, 'sitio_cero_plan_regulador_custom_css', true);
+    if (!is_string($custom_css) || '' === trim($custom_css)) {
+        return;
+    }
+
+    $clean_css = function_exists('sitio_cero_sanitize_tramite_custom_css')
+        ? sitio_cero_sanitize_tramite_custom_css($custom_css)
+        : trim((string) wp_kses((string) $custom_css, array()));
+
+    if ('' === $clean_css) {
+        return;
+    }
+
+    $selector = '#plan-regulador-' . $post_id;
+    $custom_css_output = false !== strpos($clean_css, '{{selector}}')
+        ? str_replace('{{selector}}', $selector, $clean_css)
+        : $selector . ' { ' . $clean_css . ' }';
+
+    wp_add_inline_style('sitio-cero-main', $custom_css_output);
+}
+add_action('wp_enqueue_scripts', 'sitio_cero_enqueue_plan_regulador_custom_css', 20);
+
+/* -------------------------------------------------------------------------- */
+/* Plan Regulador (Fase 2: seed versionado con grupos y documentos) */
+/* -------------------------------------------------------------------------- */
+
+function sitio_cero_plan_regulador_infer_document_type($title)
+{
+    $normalized = remove_accents((string) $title);
+    $normalized = strtolower($normalized);
+
+    if (false !== strpos($normalized, 'diario oficial')) {
+        return 'diario-oficial';
+    }
+
+    if (
+        false !== strpos($normalized, 'decreto')
+        || false !== strpos($normalized, 'dto')
+        || false !== strpos($normalized, 'da_')
+        || false !== strpos($normalized, 'da ')
+        || false !== strpos($normalized, 'd.a.')
+    ) {
+        return 'decreto';
+    }
+
+    if (false !== strpos($normalized, 'resolucion') || false !== strpos($normalized, 'res_')) {
+        return 'resolucion';
+    }
+
+    if (false !== strpos($normalized, 'informe') || false !== strpos($normalized, 'oficio') || false !== strpos($normalized, 'ord.')) {
+        return 'informe';
+    }
+
+    if (false !== strpos($normalized, 'memoria')) {
+        return 'memoria';
+    }
+
+    if (
+        false !== strpos($normalized, 'plano')
+        || false !== strpos($normalized, 'lamina')
+        || false !== strpos($normalized, 'vialidad')
+        || false !== strpos($normalized, 'zonificacion')
+        || false !== strpos($normalized, 'perfil')
+    ) {
+        return 'plano';
+    }
+
+    return 'otro';
+}
+
+function sitio_cero_plan_regulador_infer_date($title)
+{
+    $title = (string) $title;
+    if (preg_match('/\b(\d{2}[.\/-]\d{2}[.\/-]\d{4})\b/u', $title, $match)) {
+        return sanitize_text_field((string) $match[1]);
+    }
+
+    if (preg_match('/\b(19|20)\d{2}\b/u', $title, $match)) {
+        return sanitize_text_field((string) $match[0]);
+    }
+
+    return '';
+}
+
+function sitio_cero_get_plan_regulador_seed_groups()
+{
+    $groups = array(
+        array(
+            'title'    => '01 PROMULGACIÓN PRCC sector Ribera Norte DO 2001',
+            'year'     => '2001',
+            'category' => 'sector-ribera-norte',
+            'documents'=> array(
+                array('title' => '01 RES-144_GORE_PROMULGA PSRN_DO 07.08.2001', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01-RES-144_GORE_PROMULGA-PSRN_DO-07.08.2001.pdf'),
+                array('title' => '02 Memoria Explicativa Seccional Ribera Norte 2000', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/02-Memoria-Explicativa-Seccional-Ribera-Norte-2000.pdf'),
+                array('title' => '03 PRCC 2001 L7 sector Ribera Norte Vialidad Estructurante', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/03-PRCC-2001-L7-sector-Ribera-Norte-Vialidad-Estructurante-scaled.jpg'),
+                array('title' => '04 PRCC 2001 L8 sector Ribera Norte Perfiles Viales', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/04-PRCC-2001-L8-sector-RIbera-Norte-Perfiles-Viales-scaled.jpg'),
+                array('title' => '05 PRCC 2001 L9 sector Ribera Norte Perfiles Viales', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/05-PRCC-2001-L9-sector-Ribera-Norte-Perfiles-Viales-scaled.jpg'),
+                array('title' => '06 PRCC 2001 L10 sector Ribera Norte Zonificación', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/06-PRCC-2001-L10-sector-Ribera-Norte-Zonificacion-scaled.jpg'),
+            ),
+        ),
+        array(
+            'title'    => '02 PROMULGACIÓN PRCC DO 2004',
+            'year'     => '2004',
+            'category' => 'prcc',
+            'documents'=> array(
+                array('title' => '01 DTO-148 22-ABR-2004', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_-DTO-148_22-ABR-2004.pdf'),
+                array('title' => '02 L 1 Plano Plan Regulador Concepción Lámina PRC 1 Zonificación', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/02-L-1-PLANO-PLAN-REGUALDOR-CONCEPCION-LAMINA-PRC-1-ZONIFICACION-scaled.jpg'),
+                array('title' => '02 L2 Plano Plan Regulador Concepción Lámina PRC 2 Vialidad Estructurante', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/02-L2-PLANO-PLAN-REGULADOR-CONCEPCION-LAMINA-PRC-2-VIALIDAD-ESTRUCTURANTE-scaled.jpg'),
+                array('title' => '03 L 3 Plano Plan Regulador Concepción Lámina PRC 3 Riesgos', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/03-L-3-PLANO-PLAN-REGULADOR-CONCEPCION-LAMINA-PRC-3-RIESGOS-scaled.jpg'),
+                array('title' => '04 Memoria Explicativa 1 final', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/04-MEMORIA_EXPLICATIVA_1_final.pdf'),
+                array('title' => '05 Memoria Explicativa 2 final', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/05-MEMORIA_EXPLICATIVA_2_final.pdf'),
+                array('title' => '06 Memoria Explicativa 3 final', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/06-MEMORIA_EXPLICATIVA_3_final.pdf'),
+                array('title' => '07 Estudio factibilidad servicios sanitarios', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/07-estudio-factibilida-servicios-sanitarios.pdf'),
+                array('title' => '08 Certificado 247 ESSBIO', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/08-certificado-247-ESSBIO.pdf'),
+                array('title' => '09 Estudio demanda vial PRCC', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/09-Estudio-demanda-vial-PRCC.pdf'),
+                array('title' => '10 Resolución Exenta N°314-2000 EIA_COREMA_PRCC', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/10-Resolucion-Exenta-N°314-2000-EIA_COREMA_-PRCC.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '03 PRIMERA ENMIENDA Y MODIFICACIÓN PRCC 2005',
+            'year'     => '2005',
+            'category' => 'enmienda',
+            'documents'=> array(
+                array('title' => '01 DA_78_1° MOD PRCC_DO_23.03.2005', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_78_1°-MOD-PRCC_DO_23.03.2005.pdf'),
+                array('title' => 'Memoria 1 MOD_ENMIENDA_PRCC_2005', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEMORIA-1-MOD_ENMIENDA_-PRCC_2005.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '04 SEGUNDA MODIFICACIÓN PRCC 2006',
+            'year'     => '2006',
+            'category' => 'modificacion',
+            'documents'=> array(
+                array('title' => '01 DA_463_2° MOD.PRCC_DO_05.08.2006', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_463_2°-MOD.PRCC_DO_05.08.2006.pdf'),
+                array('title' => 'Memoria 2°MOD PRCC2006', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEMORIA-2°MOD-PRCC2006.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '05 PRIMERA MODIFICACIÓN PRCC sector Ribera Norte 2006',
+            'year'     => '2006',
+            'category' => 'sector-ribera-norte',
+            'documents'=> array(
+                array('title' => '01_DA_712_1°MOD PSRN_DO_09.08.2006', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_712_1°MOD-PSRN_DO_09.08.2006.pdf'),
+                array('title' => 'MEMORIA 1° MOD PSRN 2006', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEMORIA-1°-MOD-PSRN-2006.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '06 TERCERA MODIFICACIÓN PRCC febrero 2009',
+            'year'     => '2009',
+            'category' => 'modificacion',
+            'documents'=> array(
+                array('title' => '01_DA_78_3° MOD_PRCC_DO_09.02.2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_78_3°-MOD_PRCC_DO_09.02.2009.pdf'),
+                array('title' => 'MEM_3MOD_PRCC_26092008', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEM_3MOD_PRCC_26092008.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '07 SEGUNDA MODIFICACIÓN PRCC sector Ribera Norte enero 2009',
+            'year'     => '2009',
+            'category' => 'sector-ribera-norte',
+            'documents'=> array(
+                array('title' => '01_DA_98_2°MOD. PSRN_DO_09.02.2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_98_2°MOD.-PSRN_DO_09.02.2009.pdf'),
+                array('title' => '02_2° MOD PLAN SECCIONAL RIBERA NORTE LAMINA 7 VIALIDAD ESTRUCTURANTE 2008', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/02_2°-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-7-VIALIDAD-ESTRUCTURANTE-2008-scaled.jpg'),
+                array('title' => '03_2° MOD PLAN SECCIONAL RIBERA NORTE LAMINA 8 PERFILES VIALES 2008', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/03_2°-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-8-PERFILES-VIALES-2008-scaled.jpg'),
+                array('title' => '04_2° MOD PLAN SECCIONAL RIBERA NORTE LAMINA 9 PERFILES VIALES 2008', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/04_2°-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-9-PERFILES-VIALES-2008-scaled.jpg'),
+                array('title' => '05_2° MOD PLAN SECCIONAL RIBERA NORTE LAMINA 10 ZONIFICACION 2008', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/05_2°-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-10-ZONIFICACION-2008-scaled.jpg'),
+                array('title' => 'MEM_2MOD_PSRN_26092008', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEM_2MOD_PSRN_26092008.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '08 CUARTA MODIFICACIÓN PRCC septiembre 2009',
+            'year'     => '2009',
+            'category' => 'modificacion',
+            'documents'=> array(
+                array('title' => '01_DA_1088_4° MOD PRCC_DO_07.10.2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_1088_4°-MOD-PRCC_DO_07.10.2009.pdf'),
+                array('title' => '02 LAMINA PRC 2 VIALIDAD ESTRUCTURANTE 4 MODIFICACION 2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/02-LAMINA-PRC-2-VIALIDAD-ESTRUCTURANTE-4-MODIFICACION-2009-scaled.jpg'),
+                array('title' => '4° mod_PRCC_MEMORIA_07.2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/4°-mod_PRCC_MEMORIA_07.2009.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '09 TERCERA MODIFICACIÓN PRCC sector Ribera Norte diciembre 2009',
+            'year'     => '2009',
+            'category' => 'sector-ribera-norte',
+            'documents'=> array(
+                array('title' => '01_DA_1480_3°MOD PSRN_DO_30.12.2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_1480_3°MOD-PSRN_DO_30.12.2009.pdf'),
+                array('title' => '3 MOD PLAN SECCIONAL RIBERA NORTE LAMINA 7 VIALIDAD ESTRUCTURANTE 2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/3-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-7-VIALIDAD-ESTRUCTURANTE-2009-scaled.jpg'),
+                array('title' => '3 MOD PLAN SECCIONAL RIBERA NORTE LAMINA 8 PERFILES VIALES 2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/3-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-8-PERFILES-VIALES-2009-scaled.jpg'),
+                array('title' => '3 MOD PLAN SECCIONAL RIBERA NORTE LAMINA 9 PERFILES VIALES 2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/3-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-8-PERFILES-VIALES-2009-scaled.jpg'),
+                array('title' => '3 MOD PLAN SECCIONAL RIBERA NORTE LAMINA 10 ZONIFICACION 2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/3-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-8-PERFILES-VIALES-2009-scaled.jpg'),
+                array('title' => 'MEM_3MOD_PSRN_09.07.2009', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEM_3MOD_PSRN_09.07.2009.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '10 CUARTA MODIFICACIÓN PRCC Sector Ribera Norte 2012',
+            'year'     => '2012',
+            'category' => 'sector-ribera-norte',
+            'documents'=> array(
+                array('title' => '01_DA_390_4° MOD_PSRN_DO_22.05.2012', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_390_4°-MOD_PSRN_DO_22.05.2012.pdf'),
+                array('title' => '4 MOD PLAN SECCIONAL RIBERA NORTE LAMINA 10 ZONIFICACIÓN 2012', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/4-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-10-ZONIFICACION-2012.jpg'),
+                array('title' => '4 MOD PLAN SECCIONAL RIBERA NORTE LAMINA VIALIDAD ESTRUCTURANTE 2012', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/4-MOD-PLAN-SECCIONAL-RIBERA-NORTE-LAMINA-VIALIDAD-ESTRUCTURANTE-2012.jpg'),
+            ),
+        ),
+        array(
+            'title'    => '11 DEJA SIN EFECTO DUP / ASIGNA NORMAS ANTIGUAS DUP 2015',
+            'year'     => '2015',
+            'category' => 'modificacion',
+            'documents'=> array(
+                array('title' => '01_DA 154 deja sin efecto DUP_DO_28.04.2015', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_-DA-154-deja-sin-efecto-DUP_DO_28.04.2015.pdf'),
+                array('title' => '02_DA 192 asigna normas DUP caducas_DO_29.05.2015', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/02_DA-192-asigna-nomas-DUP-caducas_DO_29.05.2015.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '12 SEGUNDA ENMIENDA PRCC sector Ribera Norte 2016',
+            'year'     => '2016',
+            'category' => 'enmienda',
+            'documents'=> array(
+                array('title' => '01_DA_135_2° ENMIENDA PRCC sector Ribera Norte_DO_16.06.2016', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA_135_2°-ENMIENDA-PRCC-sector-Ribera-Norte_DO_16.06.2016.pdf'),
+                array('title' => 'MEMORIA 2 ENMIENDA SECTOR SUR RIBERA', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEMORIA-2-ENMIENDA-SECTOR-SUR-RIBERA-NORTE_07.01.2016.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '13 DECIMOTERCERA MODIFICACIÓN PRCC 2019',
+            'year'     => '2019',
+            'category' => 'modificacion',
+            'documents'=> array(
+                array('title' => '01 DA_208_13 MO PRCC DIARIO OFICIAL_DO_03.04.2019', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01-DA_-208_-13-MO-PRCC-DIARIO-OFICIAL_DO_03.04.2019.pdf'),
+                array('title' => '13 Mod – Lam 7 Vialidad RN', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/13-Mod-Lam-7-Vialidad-RN-scaled.jpg'),
+                array('title' => '13 Mod – Lam 9 Perfil RN', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/13-Mod-Lam-9-Perfil-RN-scaled.jpg'),
+                array('title' => '13 Mod – Lam 10 Zonificación RN', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/13-Mod-Lam-10-Zonificacion-RN-scaled.jpg'),
+                array('title' => '13 Mod – Plano Vialidad PRCC', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/13-Mod-Plano-Vialidad-PRCC-scaled.jpg'),
+                array('title' => '13 Mod – Plano Zonificación PRCC', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/13-Mod-Plano-Zonificacion-PRCC-scaled.jpg'),
+                array('title' => 'Memoria 13° Mod. PRCC', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/Memoria-13°-Mod.-PRCC.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '14 DECIMOCUARTA MODIFICACIÓN PARQUE HUMEDAL PAICAVÍ PRCC 2020',
+            'year'     => '2020',
+            'category' => 'modificacion',
+            'documents'=> array(
+                array('title' => '01_DA 756_14°MOD PRCC_DO_23.10.2020', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01_DA-756_-14°MOD-PRCC_DO_23.10.2020.pdf'),
+                array('title' => 'MEMORIA 14 MODIF PRC según Decreto Alcaldicio N 756 de 2020', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEMORIA-14-MODIF-PRC-segun-Decreto-Alcaldicio-N-756-de-2020.pdf'),
+                array('title' => 'Vialidad Lam 02 de 02 - 14 Mod PRCC', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/Vialidad-Lam-02-de-02-14-Mod-PRCC-scaled.jpg'),
+                array('title' => 'Zonificación Lam 01 de 02 - 14 Mod PRCC', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/Zonificacion-Lam-01-de-02-14-Mod-PRCC-scaled.jpg'),
+            ),
+        ),
+        array(
+            'title'    => '15 DECIMOQUINTA MODIFICACIÓN PRCC 2021',
+            'year'     => '2021',
+            'category' => 'modificacion',
+            'documents'=> array(
+                array('title' => '01 DA 494 15° MOD PRCC DO_06.07.2021', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/01-DA-494-15°-MOD-PRCC-DO_06.07.2021.pdf'),
+                array('title' => '02 MEMORIA 15 MOD DIAGNOSTICO PARTE 1', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/02-MEMORIA-15-MOD-DIAGNOSTICOPARTE-1.pdf'),
+                array('title' => '03 MEMORIA 15 MOD PLAN PROPUESTO PARTE 2', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/03-MEMORIA-15-MOD-PLAN-PROPUESTO-PARTE-2.pdf'),
+                array('title' => '04 MEMORIA 15 MOD DESCRIPCIÓN DEL PLAN PARTE 3', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/04-MEMORIA-15-MOD_DESCRIPCION-DEL-PLAN-PARTE-3.pdf'),
+                array('title' => 'PLANO VIALIDAD 15 MOD', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PLANO-VIALIDAD-15-MOD-scaled.jpg'),
+                array('title' => 'PLANO ZONIFICACIÓN PRC 15 MOD', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PLANO-ZONIFICACION-PRC-15-MOD-scaled.jpg'),
+                array('title' => 'PLANO ZONIFICACIÓN SECTOR RN 15 MOD', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PLANO-ZONIFICACION-SECTOR-RN-15-MOD-scaled.jpg'),
+            ),
+        ),
+        array(
+            'title'    => '16 DECIMOSEXTA HUMEDAL PICHIMAPU PRCC 2024',
+            'year'     => '2024',
+            'category' => 'modificacion',
+            'documents'=> array(
+                array('title' => 'D.A. Nº1280 DE 2024', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/D.A.-No1280-DE-2024.pdf'),
+                array('title' => 'MEMORIA_HU_PICHIMAPU_25072024', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEMORIA_HU_PICHIMAPU_25072024.pdf'),
+                array('title' => 'PLANO_PE3-2023 Pichimapu', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PLANO_PE3-2023-Pichimapu.pdf'),
+                array('title' => 'RES_EJ_18042024_25072024', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/RES_EJ_18042024_25072024.pdf'),
+            ),
+        ),
+        array(
+            'title'    => '17 DECIMOSÉPTIMA ENMIENDA PRCC 2026',
+            'year'     => '2026',
+            'category' => 'enmienda',
+            'documents'=> array(
+                array('title' => '01 DECRETO N°139 SECMUN', 'url' => 'https://concepcion.cl/wp-content/uploads/2026/02/01-DECRETO-N°139-SECMUN.pdf'),
+                array('title' => '02 ACUERDO CONCEJO 0173', 'url' => 'https://concepcion.cl/wp-content/uploads/2026/02/02-ACUERDO-CONCEJO-0173.pdf'),
+                array('title' => '03 17 enmienda MEMORIA CORREGIDA según IT_ver D 22 oct', 'url' => 'https://concepcion.cl/wp-content/uploads/2026/02/03-17-enmienda-MEMORIA-CORREGIDA-segun-IT_ver-D-22-oct.pdf'),
+                array('title' => '04 PRC1 ZONIFICACION 2025', 'url' => 'https://concepcion.cl/wp-content/uploads/2026/02/04-PRC1-ZONIFICACION-2025.pdf'),
+                array('title' => '05 PRC2 VIALIDAD 2025', 'url' => 'https://concepcion.cl/wp-content/uploads/2026/02/05-PRC2-VIALIDAD-2025.pdf'),
+                array('title' => 'Publicación en Diario Oficial', 'url' => 'https://www.diariooficial.interior.gob.cl/publicaciones/2026/04/07/44418/04/2788347.pdf'),
+            ),
+        ),
+        array(
+            'title'    => 'PLANO DETALLE 1 VÍAS BONILLA Y OTRAS AGOSTO 2018',
+            'year'     => '2018',
+            'category' => 'plano-detalle',
+            'documents'=> array(
+                array('title' => '20180629 Memoria Firmada', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/20180629-Memoria-Firmada.pdf'),
+                array('title' => 'Decreto Nº 893', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/Decreto-No-893.pdf'),
+                array('title' => 'Municipalidad de Concepción Aprueba Plano PL-DET-072018', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MUNICIPALIDAD-DE-CONCEPCION-Aprueba-Plano-PL-DET-072018.pdf'),
+                array('title' => 'Oficio 1792 informe favorable planos de detalle', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/oficio-1792-informe-favorable-planos-de-detalle.pdf'),
+                array('title' => 'PLANO_DET_VIAS_BONILLA_NORTE_VIALIDAD', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PLANO_DET_VIAS_BONILLA_NORTE_VIALIDAD.jpg'),
+                array('title' => 'PLANO_DET_VIAS_BONILLA_NORTE_ZONIFICACION', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PLANO_DET_VIAS_BONILLA_NORTE_ZONIFICACION.jpg'),
+                array('title' => 'PRC_1_PLANO_DETVIAS_BONILLA_NORTE_DTO-893_22-SEP-2018', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PRC_1_PLANO_DETVIAS_BONILLA_NORTE_DTO-893_22-SEP-2018.pdf'),
+            ),
+        ),
+        array(
+            'title'    => 'PLANO DETALLE 2 LO MÉNDEZ JUNIO 2022',
+            'year'     => '2022',
+            'category' => 'plano-detalle',
+            'documents'=> array(
+                array('title' => 'Decreto', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/decreto.pdf'),
+                array('title' => 'Informe Plano de Detalle Lo Méndez firmado KRC', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/Informe-Plano-de-Detalle-Lo-Mendez-firmado-KRC.pdf'),
+                array('title' => 'Ord. N°1299 MINVU it plano Lo Méndez firmado Seremi MINVU', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/Ord.-N°1299-MINVU-it-plano-os-mendez-firmado-seremi-minvu.pdf'),
+                array('title' => 'PLANO DE DETALLE LO MENDEZ FIRMADO', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PLANO-DE-DETALLE-LO-MENDEZ-FIRMADO-scaled.jpg'),
+            ),
+        ),
+        array(
+            'title'    => 'PLANO DETALLE 3 ALEMPARTE JULIO 2022',
+            'year'     => '2022',
+            'category' => 'plano-detalle',
+            'documents'=> array(
+                array('title' => 'Acuerdo N°2118-100-2024', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/ACUIERDO-N°-2118-100-2024.pdf'),
+                array('title' => 'Decreto N°660-2024', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/DECRETO-N°-660-2024-Copy.pdf'),
+                array('title' => 'Informe Plano Detalle Alemparte_07072022', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/INFORME-PLANO-DETALLE-ALEMPARTE_07072022.pdf'),
+                array('title' => 'Ord Nº2808 MINVU aprueba plano detalle Alemparte', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/10/ORD-No-2808-minvu-aprueba-plano-detalle-alemparte.pdf'),
+                array('title' => 'PD_alemparte', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/10/PD_alemparte.pdf'),
+            ),
+        ),
+        array(
+            'title'    => 'PLANO DETALLE 4 TUCAPEL ROL 6900-1 MARZO 2024',
+            'year'     => '2024',
+            'category' => 'plano-detalle',
+            'documents'=> array(
+                array('title' => 'Acuerdo Concejo N°2116-100-2024', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/ACUERDO-CONCEJO-N°-2116-100-2024.pdf'),
+                array('title' => 'Decreto Alcaldicio aprueba PD', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/DECRETO-ALCALDICIO-APRUEBA-PD.pdf'),
+                array('title' => 'Informe favorable Seremi MINVU 6900-1', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/INFORME-FAVORABLE-SEREMI-MINVU-6900-1-1.pdf'),
+                array('title' => 'Informe Plano Detalle Tucapel 6900-1', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/INFORME-PLANO-DETALLE-TUCAPEL-6900-1.pdf'),
+                array('title' => 'Plano de Detalle Tucapel 6900-1', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/11/Plano_detalle_tucapel_6900-1.pdf'),
+            ),
+        ),
+        array(
+            'title'    => 'PLANO DETALLE 5 TUCAPEL 6900-3 MAYO 2024',
+            'year'     => '2024',
+            'category' => 'plano-detalle',
+            'documents'=> array(
+                array('title' => 'Acuerdo Concejo N°2117-100-2024', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/ACUERDO-CONCEJO-N°-2117-100-2024.pdf'),
+                array('title' => 'Decreto Alcaldicio aprueba PD-1', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/DECRETO-ALCALDICIO-APRUEBA-PD-1.pdf'),
+                array('title' => 'Informe favorable Seremi MINVU 6900-3', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/INFORME-FAVORABLE-SEREMI-MINVU-6900-3.pdf'),
+                array('title' => 'Memoria Explicativa Plano Detalle Tucapel 6900-3', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/MEMORIA-EXPLICATIVA-PLANO-DETALLE-TUCAPEL-6900-3.pdf'),
+                array('title' => 'Plano Detalle Tucapel 6900-3', 'url' => 'https://concepcion.cl/wp-content/uploads/2025/09/PLANO-DETALLE-TUCAPEL-6900-3.pdf'),
+            ),
+        ),
+    );
+
+    $normalized = array();
+    foreach ($groups as $group) {
+        if (!is_array($group)) {
+            continue;
+        }
+
+        $documents = isset($group['documents']) && is_array($group['documents']) ? $group['documents'] : array();
+        $normalized_documents = array();
+
+        foreach ($documents as $document) {
+            if (!is_array($document)) {
+                continue;
+            }
+
+            $title = isset($document['title']) ? sanitize_text_field((string) $document['title']) : '';
+            $url = isset($document['url']) ? esc_url_raw((string) $document['url']) : '';
+            if ('' === $title && '' === $url) {
+                continue;
+            }
+
+            $normalized_documents[] = array(
+                'title'    => $title,
+                'url'      => $url,
+                'type'     => sitio_cero_plan_regulador_infer_document_type($title),
+                'date'     => sitio_cero_plan_regulador_infer_date($title),
+                'label'    => '',
+                'featured' => '',
+            );
+        }
+
+        if (empty($normalized_documents)) {
+            continue;
+        }
+
+        $normalized[] = array(
+            'title'       => isset($group['title']) ? sanitize_text_field((string) $group['title']) : '',
+            'year'        => isset($group['year']) ? sanitize_text_field((string) $group['year']) : '',
+            'category'    => isset($group['category']) ? sanitize_key((string) $group['category']) : '',
+            'description' => isset($group['description']) ? sanitize_textarea_field((string) $group['description']) : '',
+            'documents'   => $normalized_documents,
+        );
+    }
+
+    return sitio_cero_sanitize_plan_regulador_document_groups($normalized);
+}
+
+function sitio_cero_seed_plan_regulador_content()
+{
+    if (!post_type_exists('plan_regulador')) {
+        return;
+    }
+
+    $seed_version = '1';
+    $already_seeded_version = (string) get_option('sitio_cero_plan_regulador_seeded_version', '');
+    if ($seed_version === $already_seeded_version) {
+        return;
+    }
+
+    $title = 'Plan Regulador';
+    $slug = 'plan-regulador';
+
+    $existing = get_posts(
+        array(
+            'post_type'      => 'plan_regulador',
+            'post_status'    => array('publish', 'draft', 'pending', 'future', 'private'),
+            'name'           => $slug,
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+        )
+    );
+
+    if (!empty($existing)) {
+        $post_id = (int) $existing[0];
+    } else {
+        $post_id = wp_insert_post(
+            array(
+                'post_type'    => 'plan_regulador',
+                'post_status'  => 'publish',
+                'post_title'   => $title,
+                'post_name'    => $slug,
+                'post_excerpt' => 'Repositorio de instrumentos de planificación territorial del Plan Regulador Comunal de Concepción, incluyendo promulgaciones, modificaciones, enmiendas, planos de detalle y documentos normativos asociados.',
+                'post_content' => '<p>Instrumentos de planificación territorial del Plan Regulador Comunal de Concepción.</p>',
+            ),
+            true
+        );
+    }
+
+    if (is_wp_error($post_id) || !$post_id) {
+        return;
+    }
+
+    $post_id = (int) $post_id;
+
+    if (!has_excerpt($post_id)) {
+        wp_update_post(
+            array(
+                'ID'           => $post_id,
+                'post_excerpt' => 'Repositorio de instrumentos de planificación territorial del Plan Regulador Comunal de Concepción, incluyendo promulgaciones, modificaciones, enmiendas, planos de detalle y documentos normativos asociados.',
+            )
+        );
+    }
+
+    update_post_meta($post_id, 'sitio_cero_plan_regulador_subtitulo', 'Instrumentos de Planificación Territorial');
+    update_post_meta($post_id, 'sitio_cero_plan_regulador_bajada', 'Repositorio documental del Plan Regulador Comunal de Concepción.');
+
+    $groups = sitio_cero_get_plan_regulador_seed_groups();
+    if (!empty($groups)) {
+        update_post_meta($post_id, 'sitio_cero_plan_regulador_document_groups', $groups);
+    }
+
+    update_option('sitio_cero_plan_regulador_seeded_version', $seed_version);
+}
+add_action('init', 'sitio_cero_seed_plan_regulador_content', 49);
+
+function sitio_cero_normalize_news_quotes($text)
+{
+    if (!is_string($text) || '' === $text) {
+        return $text;
+    }
+
+    return str_replace(
+        array('«', '»', '&laquo;', '&raquo;', '&#171;', '&#187;'),
+        '"',
+        $text
+    );
+}
+
+function sitio_cero_normalize_news_title_quotes($title, $post_id)
+{
+    if (is_admin() || !$post_id || 'noticia' !== get_post_type($post_id)) {
+        return $title;
+    }
+
+    return sitio_cero_normalize_news_quotes($title);
+}
+add_filter('the_title', 'sitio_cero_normalize_news_title_quotes', 20, 2);
+
+function sitio_cero_normalize_news_content_quotes($content)
+{
+    if (is_admin() || !is_singular('noticia')) {
+        return $content;
+    }
+
+    return sitio_cero_normalize_news_quotes($content);
+}
+add_filter('the_content', 'sitio_cero_normalize_news_content_quotes', 20);
+
+function sitio_cero_normalize_news_document_title_quotes($parts)
+{
+    if (is_admin() || !is_singular('noticia') || !is_array($parts)) {
+        return $parts;
+    }
+
+    if (isset($parts['title'])) {
+        $parts['title'] = sitio_cero_normalize_news_quotes((string) $parts['title']);
+    }
+
+    return $parts;
+}
+add_filter('document_title_parts', 'sitio_cero_normalize_news_document_title_quotes', 20);
+
+function sitio_cero_normalize_news_document_title_text($title)
+{
+    if (is_admin() || !is_singular('noticia')) {
+        return $title;
+    }
+
+    return sitio_cero_normalize_news_quotes($title);
+}
+add_filter('document_title', 'sitio_cero_normalize_news_document_title_text', 20);
+
+function sitio_cero_get_agenda_channels_fallback_data()
+{
+    return array(
+        'title'       => __('Canales para resolver tus consultas', 'sitio-cero'),
+        'description' => '',
+        'channels'    => array(
+            array(
+                'icon'        => '',
+                'title'       => __('Presencial', 'sitio-cero'),
+                'description' => __('Lunes a viernes, 08:30 a 14:00 hrs.', 'sitio-cero'),
+                'url'         => '',
+                'target'      => '_self',
+                'visible'     => true,
+                'order'       => 10,
+            ),
+            array(
+                'icon'        => '',
+                'title'       => __('Telefónico', 'sitio-cero'),
+                'description' => '+56 2 3386 8000.',
+                'url'         => '',
+                'target'      => '_self',
+                'visible'     => true,
+                'order'       => 20,
+            ),
+            array(
+                'icon'        => '',
+                'title'       => __('Correo', 'sitio-cero'),
+                'description' => 'contacto@municipio.cl.',
+                'url'         => '',
+                'target'      => '_self',
+                'visible'     => true,
+                'order'       => 30,
+            ),
+            array(
+                'icon'        => '',
+                'title'       => __('Oficina virtual', 'sitio-cero'),
+                'description' => __('Trámites, solicitudes y seguimiento.', 'sitio-cero'),
+                'url'         => '',
+                'target'      => '_self',
+                'visible'     => true,
+                'order'       => 40,
+            ),
+        ),
+        'cta'         => array(
+            'label'  => __('Ingresar a oficina virtual', 'sitio-cero'),
+            'url'    => '#',
+            'target' => '_self',
+        ),
+    );
+}
+
+function sitio_cero_sanitize_agenda_channel_row($row)
+{
+    if (!is_array($row)) {
+        return null;
+    }
+
+    $icon = isset($row['icon']) ? sanitize_text_field((string) $row['icon']) : '';
+    $title = isset($row['title']) ? sanitize_text_field((string) $row['title']) : '';
+    $description = isset($row['description']) ? sanitize_textarea_field((string) $row['description']) : '';
+    $url = isset($row['url']) ? esc_url_raw((string) $row['url']) : '';
+    $target = isset($row['target']) ? sanitize_key((string) $row['target']) : '_self';
+    $visible = isset($row['visible']) && '1' === (string) $row['visible'];
+    $order = isset($row['order']) ? (int) $row['order'] : 0;
+
+    if ('_blank' !== $target) {
+        $target = '_self';
+    }
+
+    if ('' === $title && '' === $description && '' === $url) {
+        return null;
+    }
+
+    return array(
+        'icon'        => $icon,
+        'title'       => $title,
+        'description' => $description,
+        'url'         => $url,
+        'target'      => $target,
+        'visible'     => $visible,
+        'order'       => $order,
+    );
+}
+
+function sitio_cero_sanitize_agenda_channels_rows($rows)
+{
+    if (!is_array($rows)) {
+        return array();
+    }
+
+    $normalized = array();
+    foreach ($rows as $row) {
+        $clean_row = sitio_cero_sanitize_agenda_channel_row($row);
+        if (is_array($clean_row)) {
+            $normalized[] = $clean_row;
+        }
+    }
+
+    usort(
+        $normalized,
+        function ($a, $b) {
+            $a_order = isset($a['order']) ? (int) $a['order'] : 0;
+            $b_order = isset($b['order']) ? (int) $b['order'] : 0;
+            if ($a_order === $b_order) {
+                return 0;
+            }
+
+            return ($a_order < $b_order) ? -1 : 1;
+        }
+    );
+
+    return $normalized;
+}
+
+function sitio_cero_register_agenda_canal_post_type()
+{
+    $labels = array(
+        'name'               => __('Canales agenda', 'sitio-cero'),
+        'singular_name'      => __('Canal agenda', 'sitio-cero'),
+        'menu_name'          => __('Canales agenda', 'sitio-cero'),
+        'name_admin_bar'     => __('Canal agenda', 'sitio-cero'),
+        'add_new'            => __('Agregar nuevo', 'sitio-cero'),
+        'add_new_item'       => __('Agregar canal agenda', 'sitio-cero'),
+        'new_item'           => __('Nuevo canal agenda', 'sitio-cero'),
+        'edit_item'          => __('Editar canal agenda', 'sitio-cero'),
+        'view_item'          => __('Ver canal agenda', 'sitio-cero'),
+        'all_items'          => __('Todos los canales agenda', 'sitio-cero'),
+        'search_items'       => __('Buscar canales agenda', 'sitio-cero'),
+        'not_found'          => __('No se encontraron canales agenda.', 'sitio-cero'),
+        'not_found_in_trash' => __('No hay canales agenda en la papelera.', 'sitio-cero'),
+    );
+
+    register_post_type(
+        'agenda_canal',
+        array(
+            'labels'             => $labels,
+            'public'             => false,
+            'show_ui'            => true,
+            'show_in_menu'       => true,
+            'show_in_admin_bar'  => true,
+            'show_in_nav_menus'  => false,
+            'show_in_rest'       => false,
+            'exclude_from_search'=> true,
+            'publicly_queryable' => false,
+            'has_archive'        => false,
+            'rewrite'            => false,
+            'menu_position'      => 27,
+            'menu_icon'          => 'dashicons-phone',
+            'supports'           => array('title', 'revisions', 'page-attributes'),
+        )
+    );
+}
+add_action('init', 'sitio_cero_register_agenda_canal_post_type');
+
+function sitio_cero_add_agenda_canal_metaboxes()
+{
+    add_meta_box(
+        'sitio_cero_agenda_canal_settings',
+        __('Configuracion de bloque #canales', 'sitio-cero'),
+        'sitio_cero_render_agenda_canal_metabox',
+        'agenda_canal',
+        'normal',
+        'high'
+    );
+}
+add_action('add_meta_boxes', 'sitio_cero_add_agenda_canal_metaboxes');
+
+function sitio_cero_render_agenda_canal_metabox($post)
+{
+    wp_nonce_field('sitio_cero_save_agenda_canal_meta', 'sitio_cero_agenda_canal_meta_nonce');
+
+    $is_active_value = get_post_meta($post->ID, 'sitio_cero_agenda_canal_active', true);
+    $is_active = '' === (string) $is_active_value || '1' === (string) $is_active_value;
+    $block_title = get_post_meta($post->ID, 'sitio_cero_agenda_canal_block_title', true);
+    $block_description = get_post_meta($post->ID, 'sitio_cero_agenda_canal_block_description', true);
+    $cta_label = get_post_meta($post->ID, 'sitio_cero_agenda_canal_cta_label', true);
+    $cta_url = get_post_meta($post->ID, 'sitio_cero_agenda_canal_cta_url', true);
+    $cta_target = get_post_meta($post->ID, 'sitio_cero_agenda_canal_cta_target', true);
+    $channels = get_post_meta($post->ID, 'sitio_cero_agenda_canal_channels', true);
+
+    if (!is_string($block_title)) {
+        $block_title = '';
+    }
+    if (!is_string($block_description)) {
+        $block_description = '';
+    }
+    if (!is_string($cta_label)) {
+        $cta_label = '';
+    }
+    if (!is_string($cta_url)) {
+        $cta_url = '';
+    }
+    if (!is_string($cta_target) || ('_blank' !== $cta_target && '_self' !== $cta_target)) {
+        $cta_target = '_self';
+    }
+    if (!is_array($channels)) {
+        $channels = array();
+    }
+
+    $channels = sitio_cero_sanitize_agenda_channels_rows($channels);
+    if (empty($channels)) {
+        $channels = sitio_cero_get_agenda_channels_fallback_data()['channels'];
+    }
+    ?>
+    <p>
+        <label>
+            <input type="checkbox" name="sitio_cero_agenda_canal_active" value="1"<?php checked($is_active); ?>>
+            <?php esc_html_e('Usar este contenido en el bloque #canales de la portada', 'sitio-cero'); ?>
+        </label>
+    </p>
+    <p>
+        <label for="sitio_cero_agenda_canal_block_title"><strong><?php esc_html_e('Título del bloque', 'sitio-cero'); ?></strong></label>
+        <input id="sitio_cero_agenda_canal_block_title" type="text" name="sitio_cero_agenda_canal_block_title" class="widefat" value="<?php echo esc_attr($block_title); ?>" placeholder="<?php esc_attr_e('Canales para resolver tus consultas', 'sitio-cero'); ?>">
+    </p>
+    <p>
+        <label for="sitio_cero_agenda_canal_block_description"><strong><?php esc_html_e('Descripción breve (opcional)', 'sitio-cero'); ?></strong></label>
+        <textarea id="sitio_cero_agenda_canal_block_description" name="sitio_cero_agenda_canal_block_description" class="widefat" rows="3"><?php echo esc_textarea($block_description); ?></textarea>
+    </p>
+    <hr>
+    <p><strong><?php esc_html_e('Canales', 'sitio-cero'); ?></strong></p>
+    <div id="sitio-cero-agenda-canales-rows">
+        <?php foreach ($channels as $index => $channel) : ?>
+            <?php
+            if (!is_array($channel)) {
+                continue;
+            }
+            $row_icon = isset($channel['icon']) ? (string) $channel['icon'] : '';
+            $row_title = isset($channel['title']) ? (string) $channel['title'] : '';
+            $row_description = isset($channel['description']) ? (string) $channel['description'] : '';
+            $row_url = isset($channel['url']) ? (string) $channel['url'] : '';
+            $row_target = isset($channel['target']) ? (string) $channel['target'] : '_self';
+            $row_visible = !isset($channel['visible']) || !empty($channel['visible']);
+            $row_order = isset($channel['order']) ? (int) $channel['order'] : (($index + 1) * 10);
+            ?>
+            <fieldset class="sitio-cero-agenda-canal-row" style="border:1px solid #dcdcde;padding:12px;margin:0 0 10px 0;">
+                <p>
+                    <label><strong><?php esc_html_e('Título', 'sitio-cero'); ?></strong></label>
+                    <input type="text" class="widefat" name="sitio_cero_agenda_canal_channels[<?php echo esc_attr((string) $index); ?>][title]" value="<?php echo esc_attr($row_title); ?>">
+                </p>
+                <p>
+                    <label><strong><?php esc_html_e('Descripción', 'sitio-cero'); ?></strong></label>
+                    <input type="text" class="widefat" name="sitio_cero_agenda_canal_channels[<?php echo esc_attr((string) $index); ?>][description]" value="<?php echo esc_attr($row_description); ?>">
+                </p>
+                <p>
+                    <label><strong><?php esc_html_e('Icono Material Symbols (opcional)', 'sitio-cero'); ?></strong></label>
+                    <input type="text" class="widefat" name="sitio_cero_agenda_canal_channels[<?php echo esc_attr((string) $index); ?>][icon]" value="<?php echo esc_attr($row_icon); ?>" placeholder="call">
+                </p>
+                <p>
+                    <label><strong><?php esc_html_e('URL (opcional)', 'sitio-cero'); ?></strong></label>
+                    <input type="url" class="widefat" name="sitio_cero_agenda_canal_channels[<?php echo esc_attr((string) $index); ?>][url]" value="<?php echo esc_attr(esc_url_raw($row_url)); ?>">
+                </p>
+                <p>
+                    <label><strong><?php esc_html_e('Destino', 'sitio-cero'); ?></strong></label>
+                    <select name="sitio_cero_agenda_canal_channels[<?php echo esc_attr((string) $index); ?>][target]">
+                        <option value="_self"<?php selected('_self', $row_target); ?>><?php esc_html_e('Misma pestaña', 'sitio-cero'); ?></option>
+                        <option value="_blank"<?php selected('_blank', $row_target); ?>><?php esc_html_e('Nueva pestaña', 'sitio-cero'); ?></option>
+                    </select>
+                </p>
+                <p>
+                    <label><strong><?php esc_html_e('Orden', 'sitio-cero'); ?></strong></label>
+                    <input type="number" name="sitio_cero_agenda_canal_channels[<?php echo esc_attr((string) $index); ?>][order]" value="<?php echo esc_attr((string) $row_order); ?>" min="0" step="1">
+                </p>
+                <p>
+                    <label>
+                        <input type="checkbox" name="sitio_cero_agenda_canal_channels[<?php echo esc_attr((string) $index); ?>][visible]" value="1"<?php checked($row_visible); ?>>
+                        <?php esc_html_e('Visible', 'sitio-cero'); ?>
+                    </label>
+                </p>
+                <p>
+                    <button type="button" class="button-link-delete sitio-cero-agenda-canal-remove-row"><?php esc_html_e('Eliminar canal', 'sitio-cero'); ?></button>
+                </p>
+            </fieldset>
+        <?php endforeach; ?>
+    </div>
+    <p>
+        <button type="button" class="button" id="sitio-cero-agenda-canal-add-row"><?php esc_html_e('Agregar canal', 'sitio-cero'); ?></button>
+    </p>
+    <hr>
+    <p><strong><?php esc_html_e('Botón principal (CTA)', 'sitio-cero'); ?></strong></p>
+    <p>
+        <label for="sitio_cero_agenda_canal_cta_label"><strong><?php esc_html_e('Texto del botón', 'sitio-cero'); ?></strong></label>
+        <input id="sitio_cero_agenda_canal_cta_label" type="text" name="sitio_cero_agenda_canal_cta_label" class="widefat" value="<?php echo esc_attr($cta_label); ?>" placeholder="<?php esc_attr_e('Ingresar a oficina virtual', 'sitio-cero'); ?>">
+    </p>
+    <p>
+        <label for="sitio_cero_agenda_canal_cta_url"><strong><?php esc_html_e('URL del botón', 'sitio-cero'); ?></strong></label>
+        <input id="sitio_cero_agenda_canal_cta_url" type="url" name="sitio_cero_agenda_canal_cta_url" class="widefat" value="<?php echo esc_attr(esc_url_raw($cta_url)); ?>" placeholder="#">
+    </p>
+    <p>
+        <label for="sitio_cero_agenda_canal_cta_target"><strong><?php esc_html_e('Destino del botón', 'sitio-cero'); ?></strong></label>
+        <select id="sitio_cero_agenda_canal_cta_target" name="sitio_cero_agenda_canal_cta_target">
+            <option value="_self"<?php selected('_self', $cta_target); ?>><?php esc_html_e('Misma pestaña', 'sitio-cero'); ?></option>
+            <option value="_blank"<?php selected('_blank', $cta_target); ?>><?php esc_html_e('Nueva pestaña', 'sitio-cero'); ?></option>
+        </select>
+    </p>
+    <script>
+    (function () {
+        var rowsContainer = document.getElementById('sitio-cero-agenda-canales-rows');
+        var addButton = document.getElementById('sitio-cero-agenda-canal-add-row');
+        if (!rowsContainer || !addButton) {
+            return;
+        }
+
+        var nextIndex = rowsContainer.querySelectorAll('.sitio-cero-agenda-canal-row').length;
+
+        var buildRow = function (index) {
+            var wrapper = document.createElement('fieldset');
+            wrapper.className = 'sitio-cero-agenda-canal-row';
+            wrapper.style.cssText = 'border:1px solid #dcdcde;padding:12px;margin:0 0 10px 0;';
+            wrapper.innerHTML = ''
+                + '<p><label><strong><?php echo esc_js(__('Título', 'sitio-cero')); ?></strong></label><input type="text" class="widefat" name="sitio_cero_agenda_canal_channels[' + index + '][title]"></p>'
+                + '<p><label><strong><?php echo esc_js(__('Descripción', 'sitio-cero')); ?></strong></label><input type="text" class="widefat" name="sitio_cero_agenda_canal_channels[' + index + '][description]"></p>'
+                + '<p><label><strong><?php echo esc_js(__('Icono Material Symbols (opcional)', 'sitio-cero')); ?></strong></label><input type="text" class="widefat" name="sitio_cero_agenda_canal_channels[' + index + '][icon]" placeholder="call"></p>'
+                + '<p><label><strong><?php echo esc_js(__('URL (opcional)', 'sitio-cero')); ?></strong></label><input type="url" class="widefat" name="sitio_cero_agenda_canal_channels[' + index + '][url]"></p>'
+                + '<p><label><strong><?php echo esc_js(__('Destino', 'sitio-cero')); ?></strong></label><select name="sitio_cero_agenda_canal_channels[' + index + '][target]"><option value="_self"><?php echo esc_js(__('Misma pestaña', 'sitio-cero')); ?></option><option value="_blank"><?php echo esc_js(__('Nueva pestaña', 'sitio-cero')); ?></option></select></p>'
+                + '<p><label><strong><?php echo esc_js(__('Orden', 'sitio-cero')); ?></strong></label><input type="number" name="sitio_cero_agenda_canal_channels[' + index + '][order]" min="0" step="1" value="' + ((index + 1) * 10) + '"></p>'
+                + '<p><label><input type="checkbox" name="sitio_cero_agenda_canal_channels[' + index + '][visible]" value="1" checked> <?php echo esc_js(__('Visible', 'sitio-cero')); ?></label></p>'
+                + '<p><button type="button" class="button-link-delete sitio-cero-agenda-canal-remove-row"><?php echo esc_js(__('Eliminar canal', 'sitio-cero')); ?></button></p>';
+
+            return wrapper;
+        };
+
+        addButton.addEventListener('click', function () {
+            rowsContainer.appendChild(buildRow(nextIndex));
+            nextIndex += 1;
+        });
+
+        rowsContainer.addEventListener('click', function (event) {
+            var target = event.target;
+            if (!target || !target.classList.contains('sitio-cero-agenda-canal-remove-row')) {
+                return;
+            }
+
+            event.preventDefault();
+            var row = target.closest('.sitio-cero-agenda-canal-row');
+            if (row) {
+                row.remove();
+            }
+        });
+    })();
+    </script>
+    <?php
+}
+
+function sitio_cero_save_agenda_canal_meta($post_id)
+{
+    if (!isset($_POST['sitio_cero_agenda_canal_meta_nonce'])) {
+        return;
+    }
+
+    $nonce = sanitize_text_field(wp_unslash($_POST['sitio_cero_agenda_canal_meta_nonce']));
+    if (!wp_verify_nonce($nonce, 'sitio_cero_save_agenda_canal_meta')) {
+        return;
+    }
+
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return;
+    }
+
+    if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+        return;
+    }
+
+    if (!current_user_can('edit_post', $post_id)) {
+        return;
+    }
+
+    $is_active = isset($_POST['sitio_cero_agenda_canal_active']) && '1' === (string) wp_unslash($_POST['sitio_cero_agenda_canal_active']);
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_active', $is_active ? '1' : '0');
+
+    $block_title = isset($_POST['sitio_cero_agenda_canal_block_title'])
+        ? sanitize_text_field(wp_unslash($_POST['sitio_cero_agenda_canal_block_title']))
+        : '';
+    if ('' !== $block_title) {
+        update_post_meta($post_id, 'sitio_cero_agenda_canal_block_title', $block_title);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_agenda_canal_block_title');
+    }
+
+    $block_description = isset($_POST['sitio_cero_agenda_canal_block_description'])
+        ? sanitize_textarea_field(wp_unslash($_POST['sitio_cero_agenda_canal_block_description']))
+        : '';
+    if ('' !== $block_description) {
+        update_post_meta($post_id, 'sitio_cero_agenda_canal_block_description', $block_description);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_agenda_canal_block_description');
+    }
+
+    $channels_raw = isset($_POST['sitio_cero_agenda_canal_channels']) ? wp_unslash($_POST['sitio_cero_agenda_canal_channels']) : array();
+    if (!is_array($channels_raw)) {
+        $channels_raw = array();
+    }
+    $channels = sitio_cero_sanitize_agenda_channels_rows($channels_raw);
+    if (!empty($channels)) {
+        update_post_meta($post_id, 'sitio_cero_agenda_canal_channels', $channels);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_agenda_canal_channels');
+    }
+
+    $cta_label = isset($_POST['sitio_cero_agenda_canal_cta_label'])
+        ? sanitize_text_field(wp_unslash($_POST['sitio_cero_agenda_canal_cta_label']))
+        : '';
+    if ('' !== $cta_label) {
+        update_post_meta($post_id, 'sitio_cero_agenda_canal_cta_label', $cta_label);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_agenda_canal_cta_label');
+    }
+
+    $cta_url = isset($_POST['sitio_cero_agenda_canal_cta_url'])
+        ? esc_url_raw(wp_unslash($_POST['sitio_cero_agenda_canal_cta_url']))
+        : '';
+    if ('' !== $cta_url) {
+        update_post_meta($post_id, 'sitio_cero_agenda_canal_cta_url', $cta_url);
+    } else {
+        delete_post_meta($post_id, 'sitio_cero_agenda_canal_cta_url');
+    }
+
+    $cta_target = isset($_POST['sitio_cero_agenda_canal_cta_target'])
+        ? sanitize_key(wp_unslash($_POST['sitio_cero_agenda_canal_cta_target']))
+        : '_self';
+    if ('_blank' !== $cta_target) {
+        $cta_target = '_self';
+    }
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_cta_target', $cta_target);
+}
+add_action('save_post_agenda_canal', 'sitio_cero_save_agenda_canal_meta');
+
+function sitio_cero_get_agenda_channels_block_data()
+{
+    $fallback = sitio_cero_get_agenda_channels_fallback_data();
+
+    if (!post_type_exists('agenda_canal')) {
+        return $fallback;
+    }
+
+    $query = new WP_Query(
+        array(
+            'post_type'      => 'agenda_canal',
+            'post_status'    => 'publish',
+            'posts_per_page' => 1,
+            'orderby'        => array(
+                'menu_order' => 'ASC',
+                'date'       => 'DESC',
+            ),
+            'meta_query'     => array(
+                'relation' => 'OR',
+                array(
+                    'key'     => 'sitio_cero_agenda_canal_active',
+                    'compare' => 'NOT EXISTS',
+                ),
+                array(
+                    'key'     => 'sitio_cero_agenda_canal_active',
+                    'value'   => '1',
+                    'compare' => '=',
+                ),
+            ),
+            'no_found_rows'  => true,
+        )
+    );
+
+    if (!$query->have_posts()) {
+        return $fallback;
+    }
+
+    $query->the_post();
+    $post_id = get_the_ID();
+
+    $title = get_post_meta($post_id, 'sitio_cero_agenda_canal_block_title', true);
+    $description = get_post_meta($post_id, 'sitio_cero_agenda_canal_block_description', true);
+    $cta_label = get_post_meta($post_id, 'sitio_cero_agenda_canal_cta_label', true);
+    $cta_url = get_post_meta($post_id, 'sitio_cero_agenda_canal_cta_url', true);
+    $cta_target = get_post_meta($post_id, 'sitio_cero_agenda_canal_cta_target', true);
+    $channels = get_post_meta($post_id, 'sitio_cero_agenda_canal_channels', true);
+    wp_reset_postdata();
+
+    if (!is_string($title) || '' === trim($title)) {
+        $title = $fallback['title'];
+    }
+    if (!is_string($description)) {
+        $description = '';
+    }
+    if (!is_string($cta_label) || '' === trim($cta_label)) {
+        $cta_label = isset($fallback['cta']['label']) ? (string) $fallback['cta']['label'] : '';
+    }
+    if (!is_string($cta_url) || '' === trim($cta_url)) {
+        $cta_url = isset($fallback['cta']['url']) ? (string) $fallback['cta']['url'] : '';
+    }
+    if (!is_string($cta_target) || ('_blank' !== $cta_target && '_self' !== $cta_target)) {
+        $cta_target = '_self';
+    }
+
+    $channels = sitio_cero_sanitize_agenda_channels_rows($channels);
+    $channels = array_values(
+        array_filter(
+            $channels,
+            function ($channel) {
+                return is_array($channel) && isset($channel['visible']) && !empty($channel['visible']);
+            }
+        )
+    );
+    if (empty($channels)) {
+        $channels = $fallback['channels'];
+    }
+
+    return array(
+        'title'       => $title,
+        'description' => $description,
+        'channels'    => $channels,
+        'cta'         => array(
+            'label'  => $cta_label,
+            'url'    => $cta_url,
+            'target' => $cta_target,
+        ),
+    );
+}
+
+function sitio_cero_seed_default_agenda_canal_content()
+{
+    if (!post_type_exists('agenda_canal')) {
+        return;
+    }
+
+    $seed_version = '1';
+    $already_seeded_version = (string) get_option('sitio_cero_default_agenda_canal_seeded_version', '');
+    if ($seed_version === $already_seeded_version) {
+        return;
+    }
+
+    $existing = get_posts(
+        array(
+            'post_type'      => 'agenda_canal',
+            'post_status'    => array('publish', 'draft', 'pending', 'future', 'private'),
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+        )
+    );
+
+    if (!empty($existing)) {
+        update_option('sitio_cero_default_agenda_canal_seeded_version', $seed_version);
+        return;
+    }
+
+    $post_id = wp_insert_post(
+        array(
+            'post_type'   => 'agenda_canal',
+            'post_status' => 'publish',
+            'post_title'  => __('Canales de atención principal', 'sitio-cero'),
+            'menu_order'  => 1,
+        ),
+        true
+    );
+
+    if (is_wp_error($post_id) || !$post_id) {
+        return;
+    }
+
+    $post_id = (int) $post_id;
+
+    $channels = array(
+        array(
+            'icon'        => 'home_pin',
+            'title'       => __('Presencial', 'sitio-cero'),
+            'description' => __('Lunes a viernes, 08:30 a 14:00 hrs. Atención en edificio consistorial.', 'sitio-cero'),
+            'url'         => '',
+            'target'      => '_self',
+            'visible'     => true,
+            'order'       => 10,
+        ),
+        array(
+            'icon'        => 'call',
+            'title'       => __('Telefónico', 'sitio-cero'),
+            'description' => __('+56 2 3386 8000', 'sitio-cero'),
+            'url'         => 'tel:+56233868000',
+            'target'      => '_self',
+            'visible'     => true,
+            'order'       => 20,
+        ),
+        array(
+            'icon'        => 'mail',
+            'title'       => __('Correo', 'sitio-cero'),
+            'description' => __('contacto@municipio.cl', 'sitio-cero'),
+            'url'         => 'mailto:contacto@municipio.cl',
+            'target'      => '_self',
+            'visible'     => true,
+            'order'       => 30,
+        ),
+        array(
+            'icon'        => 'language',
+            'title'       => __('Oficina virtual', 'sitio-cero'),
+            'description' => __('Trámites, solicitudes y seguimiento en línea.', 'sitio-cero'),
+            'url'         => home_url('/oficina-virtual/'),
+            'target'      => '_self',
+            'visible'     => true,
+            'order'       => 40,
+        ),
+    );
+
+    update_post_meta($post_id, '_sitio_cero_demo_agenda_canal', '1');
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_active', '1');
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_block_title', __('Canales para resolver tus consultas', 'sitio-cero'));
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_block_description', __('Elige el canal que más te acomode para recibir orientación municipal.', 'sitio-cero'));
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_channels', sitio_cero_sanitize_agenda_channels_rows($channels));
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_cta_label', __('Ingresar a oficina virtual', 'sitio-cero'));
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_cta_url', esc_url_raw(home_url('/oficina-virtual/')));
+    update_post_meta($post_id, 'sitio_cero_agenda_canal_cta_target', '_self');
+
+    update_option('sitio_cero_default_agenda_canal_seeded_version', $seed_version);
+}
+add_action('init', 'sitio_cero_seed_default_agenda_canal_content', 48);

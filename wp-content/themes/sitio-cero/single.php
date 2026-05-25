@@ -130,20 +130,20 @@ get_header();
             </header>
 
             <?php if ($is_noticia) : ?>
-                <div class="content-body single-noticia__content single-noticia__content--with-media">
-                    <?php if ($has_media) : ?>
-                        <figure class="single-noticia__media-inline">
-                            <?php the_post_thumbnail('large', array('class' => 'single-noticia__image', 'loading' => 'eager')); ?>
-                        </figure>
-                    <?php endif; ?>
-                    <?php the_content(); ?>
-                </div>
+	                <div class="content-body single-noticia__content single-noticia__content--with-media">
+	                    <?php if ($has_media) : ?>
+	                        <figure class="single-noticia__media-inline">
+	                            <?php the_post_thumbnail('large', array('class' => 'single-noticia__image', 'loading' => 'eager')); ?>
+	                        </figure>
+	                    <?php endif; ?>
+	                    <?php the_content(); ?>
+	                </div>
 
                 <?php if (!empty($gallery_items)) : ?>
                     <?php $gallery_total = count($gallery_items); ?>
                     <section class="single-noticia-gallery" data-news-gallery>
                         <div class="single-noticia-gallery__header">
-                            <h2><?php esc_html_e('Galeria de imagenes', 'sitio-cero'); ?></h2>
+                            <h2><?php esc_html_e('Galería de imágenes', 'sitio-cero'); ?></h2>
                         </div>
 
                         <div class="single-noticia-gallery__stage">
@@ -182,7 +182,7 @@ get_header();
                         </div>
 
                         <?php if ($gallery_total > 1) : ?>
-                            <div class="single-noticia-gallery__thumbs" role="tablist" aria-label="<?php esc_attr_e('Miniaturas de la galeria', 'sitio-cero'); ?>">
+                            <div class="single-noticia-gallery__thumbs" role="tablist" aria-label="<?php esc_attr_e('Miniaturas de la galería', 'sitio-cero'); ?>">
                                 <?php foreach ($gallery_items as $index => $item) : ?>
                                     <button
                                         type="button"
@@ -200,8 +200,8 @@ get_header();
                         <?php endif; ?>
 
                         <div class="single-noticia-gallery__lightbox" data-news-gallery-lightbox hidden aria-hidden="true">
-                            <button type="button" class="single-noticia-gallery__backdrop" data-news-gallery-close aria-label="<?php esc_attr_e('Cerrar galeria', 'sitio-cero'); ?>"></button>
-                            <div class="single-noticia-gallery__lightbox-dialog" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e('Galeria de imagenes', 'sitio-cero'); ?>">
+                            <button type="button" class="single-noticia-gallery__backdrop" data-news-gallery-close aria-label="<?php esc_attr_e('Cerrar galería', 'sitio-cero'); ?>"></button>
+                            <div class="single-noticia-gallery__lightbox-dialog" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e('Galería de imágenes', 'sitio-cero'); ?>">
                                 <button type="button" class="single-noticia-gallery__lightbox-close" data-news-gallery-close aria-label="<?php esc_attr_e('Cerrar', 'sitio-cero'); ?>">&times;</button>
                                 <?php if ($gallery_total > 1) : ?>
                                     <button type="button" class="single-noticia-gallery__lightbox-arrow single-noticia-gallery__lightbox-arrow--prev" data-news-gallery-prev aria-label="<?php esc_attr_e('Imagen anterior', 'sitio-cero'); ?>">
@@ -305,7 +305,7 @@ get_header();
 
                 <?php if ('' !== trim($evento_mapa_embed_url)) : ?>
                     <section class="evento-single-map">
-                        <h2><?php esc_html_e('Ubicacion del evento', 'sitio-cero'); ?></h2>
+                        <h2><?php esc_html_e('Ubicación del evento', 'sitio-cero'); ?></h2>
                         <div class="evento-single-map__frame-wrap">
                             <iframe
                                 class="evento-single-map__frame"

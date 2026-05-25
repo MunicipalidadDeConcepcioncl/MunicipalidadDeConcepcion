@@ -65,22 +65,23 @@ Este repo ya incluye archivos base para deploy desde cPanel:
 
 ### 1) Ajustar ruta de despliegue
 
-Edita `.cpanel.yml` y cambia:
+Configuracion aplicada para este proyecto:
 
-- `DEPLOYPATH=/home/CPANEL_USER/public_html`
-
-por la ruta real de tu cuenta en cPanel, por ejemplo:
-
-- `DEPLOYPATH=/home/usuario/public_html`
+- URL sitio: `demo.lbcchile.com`
+- Repositorio cPanel: `Muni`
+- Ruta repo en servidor: `/home/ligabasq/repositories/Muni`
+- `DEPLOYPATH` actual: `/home/ligabasq/public_html/demo.lbcchile.com`
 
 ### 2) Configurar repositorio en cPanel
 
 En `cPanel > Git Version Control`:
 
 1. Crea o vincula el repositorio desde GitHub.
-2. Selecciona la rama que usarás para producción (recomendado `main` o `production`).
-3. Abre `Manage` del repo y ejecuta `Update from Remote`.
-4. Ejecuta `Deploy HEAD Commit`.
+2. Usa el nombre de repositorio `Muni`.
+3. Verifica que el path del repositorio sea `/home/ligabasq/repositories/Muni`.
+4. Selecciona la rama que usarás para producción (recomendado `main` o `production`).
+5. Abre `Manage` del repo y ejecuta `Update from Remote`.
+6. Ejecuta `Deploy HEAD Commit`.
 
 ### 3) Qué despliega este proyecto
 

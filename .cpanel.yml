@@ -1,5 +1,5 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/CPANEL_USER/public_html
+    - export DEPLOYPATH=/home/ligabasq/public_html/demo.lbcchile.com
     - /bin/bash scripts/cpanel/deploy.sh

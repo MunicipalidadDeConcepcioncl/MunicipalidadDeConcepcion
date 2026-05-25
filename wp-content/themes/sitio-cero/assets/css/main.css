@@ -3397,6 +3397,22 @@ img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    opacity: 1;
+    transform: none;
+    filter: none;
+    animation: none;
+    transition: opacity 0.18s ease-out;
+}
+
+.concejo-team__image[loading="lazy"],
+.concejo-team__image.lazyload,
+.concejo-team__image.lazyloading,
+.concejo-team__image.lazyloaded,
+.concejo-team__image.is-loaded {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    animation: none;
 }
 
 .concejo-team__image-placeholder {

@@ -42,16 +42,16 @@ configure_wp_config() {
   while IFS= read -r line; do
     case "${line}" in
       *"define( 'DB_NAME', getenv_docker('WORDPRESS_DB_NAME'"*)
-        echo "define( 'DB_NAME', getenv_docker('WORDPRESS_DB_NAME', '${db_name_esc}') );" >> "${tmp_file}"
+        echo "define( 'DB_NAME', '${db_name_esc}' );" >> "${tmp_file}"
         ;;
       *"define( 'DB_USER', getenv_docker('WORDPRESS_DB_USER'"*)
-        echo "define( 'DB_USER', getenv_docker('WORDPRESS_DB_USER', '${db_user_esc}') );" >> "${tmp_file}"
+        echo "define( 'DB_USER', '${db_user_esc}' );" >> "${tmp_file}"
         ;;
       *"define( 'DB_PASSWORD', getenv_docker('WORDPRESS_DB_PASSWORD'"*)
-        echo "define( 'DB_PASSWORD', getenv_docker('WORDPRESS_DB_PASSWORD', '${db_password_esc}') );" >> "${tmp_file}"
+        echo "define( 'DB_PASSWORD', '${db_password_esc}' );" >> "${tmp_file}"
         ;;
       *"define( 'DB_HOST', getenv_docker('WORDPRESS_DB_HOST'"*)
-        echo "define( 'DB_HOST', getenv_docker('WORDPRESS_DB_HOST', '${db_host_esc}') );" >> "${tmp_file}"
+        echo "define( 'DB_HOST', '${db_host_esc}' );" >> "${tmp_file}"
         ;;
       *)
         echo "${line}" >> "${tmp_file}"

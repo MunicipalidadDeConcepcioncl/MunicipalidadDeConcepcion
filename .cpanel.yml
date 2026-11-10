@@ -1,12 +1,7 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/ligabasq/public_html/demo
-    - export FULL_DEPLOY_PACKAGE=deploy/full/latest.tar.gz
-    - export IMPORT_DB_ON_DEPLOY=1
-    - export CPANEL_DB_HOST=localhost
-    - export CPANEL_DB_PORT=3306
-    - export CPANEL_DB_NAME=ligabasq_demo1
-    - export CPANEL_DB_USER=ligabasq_demo1
-    - export CPANEL_DB_PASSWORD=95102314iJ.,
+    - export DEPLOYPATH=/home/conce525/public_html/desarrollo.municoncepcion.cl
+    - export FULL_DEPLOY_PACKAGE=
+    - export IMPORT_DB_ON_DEPLOY=0
     - /bin/bash scripts/cpanel/deploy.sh
